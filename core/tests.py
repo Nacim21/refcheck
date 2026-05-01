@@ -32,6 +32,23 @@ class GcsUploadFlowTests(TestCase):
         self.assertRegex(payload["gcs_path"], r"^uploads/[a-f0-9]{32}\.mp4$")
         mocked_signed_url.assert_called_once()
 
+    @patch("core.views._ensure_gcs_cors", return_value="")
+    @patch("core.views._generate_signed_upload_url")
+    def test_create_upload_url_does_not_expose_credential_errors(self, mocked_signed_url, _mocked_cors):
+        mocked_signed_url.side_effect = Exception('File {"private_key": "-----BEGIN PRIVATE KEY-----"} was not found.')
+
+        response = self.client.post(
+            reverse("create_upload_url"),
+            data=json.dumps({"filename": "clip.mp4", "content_type": "video/mp4"}),
+            content_type="application/json",
+        )
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("GOOGLE_APPLICATION_CREDENTIALS_JSON", payload["error"])
+        self.assertNotIn("private_key", payload["error"])
+        self.assertNotIn("BEGIN PRIVATE KEY", payload["error"])
+
     @patch("core.views._generate_signed_read_url", return_value="https://storage.example/read")
     @patch("core.views._download_gcs_video_to_temp", return_value="C:/tmp/refcheck-test.mp4")
     @patch("core.views.analyze_video_with_gemini")
@@ -65,6 +82,54 @@ class GcsUploadFlowTests(TestCase):
         self.assertEqual(upload_result["filename"], "uploads/test.mp4")
         self.assertEqual(upload_result["video_url"], "https://storage.example/read")
 
+    @patch("core.views._download_gcs_video_to_temp")
+    def test_analyze_gcs_download_error_does_not_expose_credentials(self, mocked_download):
+        mocked_download.side_effect = Exception('File {"private_key": "-----BEGIN PRIVATE KEY-----"} was not found.')
+
+        response = self.client.post(
+            reverse("home"),
+            data=json.dumps(
+                {
+                    "sport": "Basketball",
+                    "initial_call": "Goaltending",
+                    "video_gcs_path": "uploads/test.mp4",
+                    "file_size": 1024,
+                }
+            ),
+            content_type="application/json",
+        )
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 400)
+        error_text = " ".join(payload["errors"])
+        self.assertIn("GOOGLE_APPLICATION_CREDENTIALS_JSON", error_text)
+        self.assertNotIn("private_key", error_text)
+        self.assertNotIn("BEGIN PRIVATE KEY", error_text)
+
+    @patch("core.views.analyze_video_with_gemini")
+    @patch("core.views._download_gcs_video_to_temp", return_value="/tmp/refcheck-test.mp4")
+    def test_analyze_gcs_filesystem_error_is_not_reported_as_download_failure(self, _mocked_download, mocked_analyze):
+        mocked_analyze.side_effect = OSError(30, "Read-only file system", "/var/task/media")
+
+        response = self.client.post(
+            reverse("home"),
+            data=json.dumps(
+                {
+                    "sport": "Basketball",
+                    "initial_call": "Goaltending",
+                    "video_gcs_path": "uploads/test.mp4",
+                    "file_size": 1024,
+                }
+            ),
+            content_type="application/json",
+        )
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 400)
+        error_text = " ".join(payload["errors"])
+        self.assertIn("runtime filesystem is read-only", error_text)
+        self.assertNotIn("download video from GCS", error_text)
+
 
 class GcsCredentialsConfigTests(SimpleTestCase):
     def test_service_account_json_env_is_supported_for_vercel(self):
@@ -77,6 +142,18 @@ class GcsCredentialsConfigTests(SimpleTestCase):
         with patch.dict("os.environ", {"GOOGLE_APPLICATION_CREDENTIALS_JSON": "not-json"}, clear=False):
             with self.assertRaisesRegex(RuntimeError, "not valid JSON"):
                 views._gcp_credentials_info()
+
+    def test_google_application_credentials_rejects_raw_json_without_exposing_secret(self):
+        raw_json = '{"private_key": "-----BEGIN PRIVATE KEY-----"}'
+
+        with patch.dict("os.environ", {"GOOGLE_APPLICATION_CREDENTIALS": raw_json}, clear=True):
+            with self.assertRaises(RuntimeError) as context:
+                views._raise_if_credentials_path_contains_json()
+
+        message = str(context.exception)
+        self.assertIn("GOOGLE_APPLICATION_CREDENTIALS_JSON", message)
+        self.assertNotIn("private_key", message)
+        self.assertNotIn("BEGIN PRIVATE KEY", message)
 
     def test_bucket_name_supports_gcp_storage_bucket_name(self):
         with patch.dict("os.environ", {"GCP_STORAGE_BUCKET_NAME": "primary-bucket"}, clear=True):
