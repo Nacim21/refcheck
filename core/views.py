@@ -107,13 +107,14 @@ def _handle_analyze_post(request, context: dict, template_name: str):
     }
     request.session[UPLOAD_RESULT_SESSION_KEY] = upload_result
     context["upload_result"] = upload_result
+    context["active_tab"] = "live_feed"
     return render(request, template_name, context)
 
 def home(request):
     context = _build_context(active_tab=request.GET.get("tab", "home"))
     if request.method == "POST":
         return _handle_analyze_post(request, context, "core/home.html")
-    if context["active_tab"] == "analyze":
+    if context["active_tab"] in {"analyze", "live_feed"}:
         context["upload_result"] = request.session.get(UPLOAD_RESULT_SESSION_KEY)
     return render(request, "core/home.html", context)
 

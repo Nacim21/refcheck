@@ -41,9 +41,9 @@
     <button id="tab-btn-analyze" type="button" data-tab-target="analyze" class="rounded-sm flex items-center gap-3 px-4 py-3 font-['Space_Grotesk'] text-sm font-bold uppercase">
       <span class="material-symbols-outlined">segment</span> Evidence Log
     </button>
-    <div class="text-slate-500 flex items-center gap-3 px-4 py-3 font-['Space_Grotesk'] text-sm font-bold uppercase">
+    <button id="tab-btn-live-feed" type="button" data-tab-target="live_feed" class="rounded-sm flex items-center gap-3 px-4 py-3 font-['Space_Grotesk'] text-sm font-bold uppercase">
       <span class="material-symbols-outlined">videocam</span> Live Feed
-    </div>
+    </button>
   </nav>
 </aside>
 
@@ -173,6 +173,23 @@
       </div>
 
       {% if upload_result %}
+      <section class="glass-panel p-6">
+        <p class="text-sm text-slate-300">
+          Analysis finished. Open <span class="font-semibold text-[#CCFF00]">Live Feed</span> to review results.
+        </p>
+      </section>
+      {% endif %}
+    </section>
+
+    <section id="tab-content-live-feed" class="space-y-6 hidden">
+      <section class="flex justify-between items-end gap-4">
+        <div>
+          <h1 class="text-4xl md:text-5xl text-white mb-2 uppercase" style="font-family:'Space Grotesk', sans-serif;">Live Feed Results</h1>
+          <p class="text-slate-400 max-w-xl">Latest analyzed upload and structured AI output.</p>
+        </div>
+      </section>
+
+      {% if upload_result %}
       <section class="space-y-6">
         <div class="glass-panel p-6">
           <div class="flex flex-wrap items-center justify-between gap-3">
@@ -236,6 +253,12 @@
         </div>
         {% endif %}
       </section>
+      {% else %}
+      <section class="glass-panel p-6">
+        <h2 class="text-xl font-semibold text-white uppercase tracking-wide">No Live Feed Results Yet</h2>
+        <p class="mt-3 text-sm text-slate-300">Upload a clip from Evidence Log to populate this panel automatically.</p>
+        <button type="button" data-open-tab="analyze" class="mt-5 bg-[#CCFF00] text-black px-5 py-2 rounded-sm font-bold text-xs uppercase hover:opacity-90">Go to Evidence Log</button>
+      </section>
       {% endif %}
     </section>
   </div>
@@ -247,29 +270,35 @@
   function setSidebarActive(tabName) {
     const homeBtn = document.getElementById('tab-btn-home');
     const analyzeBtn = document.getElementById('tab-btn-analyze');
+    const liveFeedBtn = document.getElementById('tab-btn-live-feed');
 
-    if (tabName === 'analyze') {
-      homeBtn.className = 'text-slate-500 hover:text-[#CCFF00] rounded-sm flex items-center gap-3 px-4 py-3 font-[\'Space_Grotesk\'] text-sm font-bold uppercase transition-colors';
-      analyzeBtn.className = 'bg-[#CCFF00] text-black rounded-sm flex items-center gap-3 px-4 py-3 font-[\'Space_Grotesk\'] text-sm font-bold uppercase';
-    } else {
-      homeBtn.className = 'bg-[#CCFF00] text-black rounded-sm flex items-center gap-3 px-4 py-3 font-[\'Space_Grotesk\'] text-sm font-bold uppercase';
-      analyzeBtn.className = 'text-slate-500 hover:text-[#CCFF00] rounded-sm flex items-center gap-3 px-4 py-3 font-[\'Space_Grotesk\'] text-sm font-bold uppercase transition-colors';
-    }
+    const activeClass = "bg-[#CCFF00] text-black rounded-sm flex items-center gap-3 px-4 py-3 font-['Space_Grotesk'] text-sm font-bold uppercase";
+    const inactiveClass = "text-slate-500 hover:text-[#CCFF00] rounded-sm flex items-center gap-3 px-4 py-3 font-['Space_Grotesk'] text-sm font-bold uppercase transition-colors";
+
+    homeBtn.className = tabName === 'home' ? activeClass : inactiveClass;
+    analyzeBtn.className = tabName === 'analyze' ? activeClass : inactiveClass;
+    liveFeedBtn.className = tabName === 'live_feed' ? activeClass : inactiveClass;
   }
 
   function switchTab(tabName) {
     const homeTab = document.getElementById('tab-content-home');
     const analyzeTab = document.getElementById('tab-content-analyze');
+    const liveFeedTab = document.getElementById('tab-content-live-feed');
     const main = document.getElementById('app-main');
 
+    homeTab.classList.add('hidden');
+    analyzeTab.classList.add('hidden');
+    liveFeedTab.classList.add('hidden');
+    main.classList.remove('overflow-hidden');
+    main.classList.add('overflow-y-auto');
+
     if (tabName === 'analyze') {
-      homeTab.classList.add('hidden');
       analyzeTab.classList.remove('hidden');
-      main.classList.remove('overflow-hidden');
-      main.classList.add('overflow-y-auto');
       window.history.replaceState({}, '', '#analyze');
+    } else if (tabName === 'live_feed') {
+      liveFeedTab.classList.remove('hidden');
+      window.history.replaceState({}, '', '#live-feed');
     } else {
-      analyzeTab.classList.add('hidden');
       homeTab.classList.remove('hidden');
       main.classList.remove('overflow-y-auto');
       main.classList.add('overflow-hidden');
@@ -319,8 +348,12 @@
     });
   }
 
-  const tabFromHash = (window.location.hash || '').replace('#', '');
-  if (tabFromHash === 'analyze' || initialTabFromServer === 'analyze') {
+  const tabFromHashRaw = (window.location.hash || '').replace('#', '');
+  const tabFromHash = tabFromHashRaw === 'live-feed' ? 'live_feed' : tabFromHashRaw;
+
+  if (tabFromHash === 'live_feed' || initialTabFromServer === 'live_feed') {
+    switchTab('live_feed');
+  } else if (tabFromHash === 'analyze' || initialTabFromServer === 'analyze') {
     switchTab('analyze');
   } else {
     switchTab('home');
