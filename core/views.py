@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import tempfile
 from datetime import timedelta
@@ -14,6 +15,8 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from .services import analyze_video_with_gemini
+
+logger = logging.getLogger(__name__)
 
 
 MAX_VIDEO_SIZE_BYTES = 100 * 1024 * 1024
@@ -272,13 +275,24 @@ def create_upload_url(request):
 
     gcs_path = f"uploads/{uuid4().hex}{extension}"
     cors_warning = ""
+    logger.info(
+        "create_upload_url: filename=%r content_type=%r gcs_path=%r bucket=%r project=%r creds=%r",
+        filename,
+        content_type,
+        gcs_path,
+        os.environ.get("GCS_BUCKET_NAME"),
+        os.environ.get("GOOGLE_CLOUD_PROJECT"),
+        os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"),
+    )
     try:
         try:
             cors_warning = _ensure_gcs_cors(request)
         except Exception:
+            logger.exception("create_upload_url: CORS auto-config failed")
             cors_warning = "GCS CORS could not be auto-configured."
         upload_url = _generate_signed_upload_url(gcs_path, content_type)
     except Exception:
+        logger.exception("create_upload_url: failed to generate signed URL for %r", gcs_path)
         return JsonResponse({"error": _public_gcs_error_message()}, status=503)
 
     payload = {"upload_url": upload_url, "gcs_path": gcs_path}
