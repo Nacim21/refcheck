@@ -109,15 +109,15 @@ def _validate_video_metadata(filename: str, content_type: str) -> tuple[str | No
 
 
 def _gcs_bucket_name() -> str:
-    return os.getenv("GCP_STORAGE_BUCKET_NAME", "").strip()
+    return (
+        os.getenv("GCP_STORAGE_BUCKET_NAME")
+        or os.getenv("GCS_BUCKET_NAME")
+        or ""
+    ).strip()
 
 
 def _gcp_credentials_info() -> dict | None:
-    raw_credentials = (
-        os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
-        or os.getenv("GCP_SERVICE_ACCOUNT_JSON")
-        or ""
-    ).strip()
+    raw_credentials = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON", "").strip()
     if not raw_credentials:
         return None
     try:
@@ -129,14 +129,19 @@ def _gcp_credentials_info() -> dict | None:
 def _get_gcs_bucket():
     bucket_name = _gcs_bucket_name()
     if not bucket_name:
-        raise RuntimeError("GCP_STORAGE_BUCKET_NAME is not configured.")
+        raise RuntimeError("GCP_STORAGE_BUCKET_NAME or GCS_BUCKET_NAME is not configured.")
     try:
         from google.cloud import storage
+        from google.oauth2 import service_account
     except ImportError as exc:
         raise RuntimeError("google-cloud-storage is not installed.") from exc
     credentials_info = _gcp_credentials_info()
     if credentials_info:
-        return storage.Client.from_service_account_info(credentials_info).bucket(bucket_name)
+        credentials = service_account.Credentials.from_service_account_info(credentials_info)
+        return storage.Client(
+            credentials=credentials,
+            project=credentials_info.get("project_id"),
+        ).bucket(bucket_name)
     return storage.Client().bucket(bucket_name)
 
 
