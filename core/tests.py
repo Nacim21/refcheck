@@ -2,7 +2,7 @@ import json
 
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from . import services, views
 
@@ -77,6 +77,48 @@ class GcsCredentialsConfigTests(SimpleTestCase):
         with patch.dict("os.environ", {"GOOGLE_APPLICATION_CREDENTIALS_JSON": "not-json"}, clear=False):
             with self.assertRaisesRegex(RuntimeError, "not valid JSON"):
                 views._gcp_credentials_info()
+
+    def test_bucket_name_supports_gcp_storage_bucket_name(self):
+        with patch.dict("os.environ", {"GCP_STORAGE_BUCKET_NAME": "primary-bucket"}, clear=True):
+            self.assertEqual(views._gcs_bucket_name(), "primary-bucket")
+
+    def test_bucket_name_falls_back_to_gcs_bucket_name(self):
+        with patch.dict("os.environ", {"GCS_BUCKET_NAME": "fallback-bucket"}, clear=True):
+            self.assertEqual(views._gcs_bucket_name(), "fallback-bucket")
+
+    @patch("google.cloud.storage.Client")
+    @patch("google.oauth2.service_account.Credentials.from_service_account_info")
+    def test_get_gcs_bucket_uses_service_account_json_credentials(self, mocked_credentials_factory, mocked_client):
+        service_account = {"type": "service_account", "project_id": "refcheck-test"}
+        credentials = Mock(name="credentials")
+        bucket = Mock(name="bucket")
+        mocked_credentials_factory.return_value = credentials
+        mocked_client.return_value.bucket.return_value = bucket
+
+        with patch.dict(
+            "os.environ",
+            {
+                "GOOGLE_APPLICATION_CREDENTIALS_JSON": json.dumps(service_account),
+                "GCP_STORAGE_BUCKET_NAME": "uploads-bucket",
+            },
+            clear=True,
+        ):
+            self.assertIs(views._get_gcs_bucket(), bucket)
+
+        mocked_credentials_factory.assert_called_once_with(service_account)
+        mocked_client.assert_called_once_with(credentials=credentials, project="refcheck-test")
+        mocked_client.return_value.bucket.assert_called_once_with("uploads-bucket")
+
+    @patch("google.cloud.storage.Client")
+    def test_get_gcs_bucket_falls_back_to_default_credentials_client(self, mocked_client):
+        bucket = Mock(name="bucket")
+        mocked_client.return_value.bucket.return_value = bucket
+
+        with patch.dict("os.environ", {"GCS_BUCKET_NAME": "local-bucket"}, clear=True):
+            self.assertIs(views._get_gcs_bucket(), bucket)
+
+        mocked_client.assert_called_once_with()
+        mocked_client.return_value.bucket.assert_called_once_with("local-bucket")
 
 
 class VisualSeverityTriageTests(SimpleTestCase):
