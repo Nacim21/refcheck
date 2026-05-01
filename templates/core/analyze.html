@@ -1,109 +1,349 @@
-{% extends "base.html" %}
+﻿<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>RefCheck | Upload Review</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+    .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    }
+    .glass-panel {
+        background: rgba(45, 45, 46, 0.8);
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    body {
+        background-color: #131314;
+        color: #e5e2e3;
+    }
+</style>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "on-primary": "#283500",
+            "secondary": "#adc6ff",
+            "surface": "#131314",
+            "secondary-fixed-dim": "#adc6ff",
+            "on-primary-fixed-variant": "#3c4d00",
+            "on-secondary-fixed": "#001a41",
+            "outline": "#8e9379",
+            "tertiary-fixed": "#e4e2e3",
+            "on-background": "#e5e2e3",
+            "on-secondary": "#002e69",
+            "on-secondary-fixed-variant": "#004493",
+            "surface-container-highest": "#353436",
+            "secondary-fixed": "#d8e2ff",
+            "secondary-container": "#4b8eff",
+            "on-secondary-container": "#00285c",
+            "tertiary-fixed-dim": "#c8c6c7",
+            "primary-fixed": "#c3f400",
+            "on-error-container": "#ffdad6",
+            "on-tertiary": "#303031",
+            "on-tertiary-fixed": "#1b1b1c",
+            "on-tertiary-fixed-variant": "#474648",
+            "on-tertiary-container": "#656465",
+            "on-primary-container": "#556d00",
+            "inverse-on-surface": "#303031",
+            "on-error": "#690005",
+            "surface-container-lowest": "#0e0e0f",
+            "surface-container": "#1f1f20",
+            "background": "#131314",
+            "inverse-primary": "#506600",
+            "inverse-surface": "#e5e2e3",
+            "tertiary-container": "#e4e2e3",
+            "surface-dim": "#131314",
+            "surface-variant": "#353436",
+            "primary-fixed-dim": "#abd600",
+            "outline-variant": "#444933",
+            "tertiary": "#ffffff",
+            "error": "#ffb4ab",
+            "error-container": "#93000a",
+            "primary": "#ffffff",
+            "surface-tint": "#abd600",
+            "on-surface-variant": "#c4c9ac",
+            "primary-container": "#c3f400",
+            "surface-container-low": "#1b1b1c",
+            "surface-container-high": "#2a2a2b",
+            "on-primary-fixed": "#161e00",
+            "surface-bright": "#39393a",
+            "on-surface": "#e5e2e3"
+          },
+          borderRadius: {
+            DEFAULT: "0.125rem",
+            lg: "0.25rem",
+            xl: "0.5rem",
+            full: "0.75rem"
+          },
+          fontFamily: {
+            "display-xl": ["Space Grotesk"],
+            "mono-data": ["Inter"],
+            "headline-md": ["Space Grotesk"],
+            "body-lg": ["Inter"],
+            "body-md": ["Inter"],
+            "label-caps": ["Space Grotesk"],
+            "headline-lg": ["Space Grotesk"]
+          }
+        }
+      }
+    }
+</script>
+</head>
+<body class="font-body-md overflow-x-hidden">
+<header class="bg-[#2D2D2E]/80 backdrop-blur-2xl text-[#CCFF00] font-['Space_Grotesk'] tracking-tight uppercase font-medium border-b border-white/10 flex justify-between items-center w-full px-6 h-16 fixed top-0 z-50">
+<div class="flex items-center gap-8">
+<a href="{% url 'home' %}" class="text-2xl font-black italic tracking-tighter text-[#CCFF00]">RefCheck</a>
+<nav class="hidden md:flex gap-6 items-center">
+<a class="text-slate-400 hover:text-white transition-colors" href="{% url 'home' %}">Home</a>
+<a class="text-[#CCFF00] border-b-2 border-[#CCFF00] pb-1" href="{% url 'analyze' %}">Analysis</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<a href="{% url 'analyze' %}" class="bg-[#CCFF00] text-black px-4 py-1.5 rounded-sm font-bold text-xs hover:opacity-90 active:scale-95 transition-all">Start Review</a>
+</div>
+</header>
 
-{% block title %}RefCheck AI | Analyze{% endblock %}
+<aside class="flex bg-[#1A1A1B] fixed left-0 top-16 h-[calc(100vh-64px)] w-[280px] border-r border-white/5 shadow-2xl flex-col py-4 gap-2 z-40">
+<nav class="flex-grow flex flex-col gap-1">
+<div class="text-slate-500 flex items-center gap-3 px-4 py-3 mx-2 font-['Space_Grotesk'] text-sm font-bold uppercase">
+<span class="material-symbols-outlined">videocam</span> Live Feed
+</div>
+<div class="bg-[#CCFF00] text-black rounded-sm flex items-center gap-3 px-4 py-3 mx-2 font-['Space_Grotesk'] text-sm font-bold uppercase">
+<span class="material-symbols-outlined">segment</span> Evidence Log
+</div>
+</nav>
+</aside>
 
-{% block content %}
-<section class="mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white p-8">
-    <h1 class="text-3xl font-bold tracking-tight text-slate-900">Analyze a basketball call</h1>
-
-    {% if errors %}
-    <div class="mt-6 rounded-xl border border-rose-200 bg-rose-50 p-4">
-        <h2 class="text-sm font-semibold text-rose-700">Please fix the following:</h2>
-        <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-rose-700">
-            {% for error in errors %}
-            <li>{{ error }}</li>
-            {% endfor %}
-        </ul>
-    </div>
-    {% endif %}
-
-    <form id="analyze-form" action="{% url 'analyze' %}" method="post" enctype="multipart/form-data" class="mt-8 space-y-6">
-        {% csrf_token %}
-
-        <div>
-            <label for="video" class="block text-sm font-semibold text-slate-700">Video upload</label>
-            <input
-                id="video"
-                name="video"
-                type="file"
-                accept=".mp4,.mov,.webm"
-                class="mt-2 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 file:mr-4 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-slate-700"
-            >
-            <p class="mt-2 text-xs text-slate-500">Accepted formats: MP4, MOV, WEBM. Max size: 50 MB.</p>
-        </div>
-
-        <div>
-            <label for="original_call" class="block text-sm font-semibold text-slate-700">Original call</label>
-            <input
-                id="original_call"
-                name="original_call"
-                type="text"
-                placeholder="e.g., Blocking foul"
-                value="{{ form_data.original_call }}"
-                class="mt-2 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
-            >
-        </div>
-
-        <div>
-            <label for="sport" class="block text-sm font-semibold text-slate-700">Sport</label>
-            <input
-                id="sport_display"
-                type="text"
-                value="Basketball"
-                readonly
-                class="mt-2 block w-full rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-700"
-            >
-            <input id="sport" name="sport" type="hidden" value="Basketball">
-        </div>
-
-        <div>
-            <p class="text-sm font-semibold text-slate-700">Suggested calls</p>
-            <div class="mt-3 flex flex-wrap gap-2">
-                <button type="button" data-call="Blocking foul" class="rounded-full border border-slate-300 px-3 py-1.5 text-sm text-slate-700">Blocking foul</button>
-                <button type="button" data-call="Charging foul" class="rounded-full border border-slate-300 px-3 py-1.5 text-sm text-slate-700">Charging foul</button>
-                <button type="button" data-call="Traveling" class="rounded-full border border-slate-300 px-3 py-1.5 text-sm text-slate-700">Traveling</button>
-                <button type="button" data-call="Goaltending" class="rounded-full border border-slate-300 px-3 py-1.5 text-sm text-slate-700">Goaltending</button>
-                <button type="button" data-call="Personal foul" class="rounded-full border border-slate-300 px-3 py-1.5 text-sm text-slate-700">Personal foul</button>
-                <button type="button" data-call="No call" class="rounded-full border border-slate-300 px-3 py-1.5 text-sm text-slate-700">No call</button>
-            </div>
-        </div>
-
-        <div>
-            <button id="analyze-submit" type="submit" class="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70">
-                Analyze Play
-            </button>
-        </div>
-    </form>
+<main class="ml-[280px] mt-16 p-6 md:p-8 min-h-screen bg-[#131314]">
+<div class="max-w-6xl mx-auto space-y-8">
+<section class="flex justify-between items-end gap-4">
+<div>
+<h1 class="font-display-xl text-4xl md:text-5xl text-primary mb-2 uppercase">Video Analysis Engine</h1>
+<p class="font-body-md text-on-surface-variant max-w-xl">Upload basketball footage for temporal visual analysis with selected evidence frames.</p>
+</div>
 </section>
 
-<div id="processing-bar" class="mx-auto mt-6 hidden max-w-3xl rounded-xl border border-slate-200 bg-white p-4">
-    <div class="mb-2 flex items-center justify-between text-sm font-semibold text-slate-700">
-        <span>Processing upload...</span>
-        <span>Working</span>
-    </div>
-    <div class="h-2 w-full overflow-hidden rounded-full bg-slate-200">
-        <div class="h-full w-1/3 animate-pulse rounded-full bg-slate-800"></div>
-    </div>
-    <p class="mt-2 text-xs text-slate-500">Extracting representative frames and generating a temporal visual description.</p>
+{% if errors %}
+<section class="rounded-lg border border-red-400/30 bg-red-500/10 p-4">
+<h2 class="text-sm font-semibold uppercase tracking-wide text-red-200">Please fix the following</h2>
+<ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-red-100">
+{% for error in errors %}
+<li>{{ error }}</li>
+{% endfor %}
+</ul>
+</section>
+{% endif %}
+
+<form id="analyze-form" action="{% url 'analyze' %}" method="post" enctype="multipart/form-data" class="space-y-8">
+{% csrf_token %}
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+<div class="lg:col-span-2 relative group">
+<label for="video" class="w-full h-80 border-2 border-dashed border-white/10 rounded-lg flex flex-col items-center justify-center bg-white/5 hover:bg-[#CCFF00]/5 hover:border-[#CCFF00]/30 transition-all cursor-pointer overflow-hidden text-center px-6">
+<div class="absolute inset-0 bg-gradient-to-br from-[#CCFF00]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+<span class="material-symbols-outlined text-5xl text-[#CCFF00] mb-4">cloud_upload</span>
+<div class="font-headline-md text-2xl text-white mb-1 uppercase">Upload Sports Clip</div>
+<div class="font-mono-data text-slate-500 text-xs">(MP4, MOV, WEBM up to 50MB)</div>
+<div id="video-name" class="mt-4 text-sm text-[#CCFF00]"></div>
+</label>
+<input id="video" name="video" type="file" accept=".mp4,.mov,.webm" class="hidden" required>
 </div>
 
+<div class="glass-panel p-6 flex flex-col justify-between gap-6">
+<div>
+<div class="bg-secondary-container/20 text-secondary-fixed px-2 py-1 rounded text-[10px] font-bold uppercase tracking-widest inline-block">Ready</div>
+<p class="mt-4 text-sm text-slate-300">Submit to start frame extraction and Gemini visual analysis.</p>
+</div>
+<div class="space-y-4">
+<div>
+<label for="original_call" class="block text-xs font-bold uppercase tracking-widest text-slate-400">Original Call</label>
+<input id="original_call" name="original_call" type="text" value="{{ form_data.original_call }}" placeholder="e.g., Blocking foul" class="mt-2 w-full rounded-sm border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-[#CCFF00] focus:outline-none">
+</div>
+<div>
+<label class="block text-xs font-bold uppercase tracking-widest text-slate-400">Sport</label>
+<input type="text" value="Basketball" readonly class="mt-2 w-full rounded-sm border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-300">
+<input type="hidden" name="sport" value="Basketball">
+</div>
+</div>
+</div>
+</div>
+
+<section class="space-y-4">
+<h2 class="font-label-caps text-label-caps text-slate-400 uppercase tracking-widest">Suggested Calls</h2>
+<div class="flex flex-wrap gap-3">
+<button type="button" data-call="Blocking foul" class="rounded-full border border-white/20 px-4 py-2 text-sm text-slate-200 hover:border-[#CCFF00] hover:text-[#CCFF00] transition-colors">Blocking foul</button>
+<button type="button" data-call="Charging foul" class="rounded-full border border-white/20 px-4 py-2 text-sm text-slate-200 hover:border-[#CCFF00] hover:text-[#CCFF00] transition-colors">Charging foul</button>
+<button type="button" data-call="Traveling" class="rounded-full border border-white/20 px-4 py-2 text-sm text-slate-200 hover:border-[#CCFF00] hover:text-[#CCFF00] transition-colors">Traveling</button>
+<button type="button" data-call="Goaltending" class="rounded-full border border-white/20 px-4 py-2 text-sm text-slate-200 hover:border-[#CCFF00] hover:text-[#CCFF00] transition-colors">Goaltending</button>
+<button type="button" data-call="Personal foul" class="rounded-full border border-white/20 px-4 py-2 text-sm text-slate-200 hover:border-[#CCFF00] hover:text-[#CCFF00] transition-colors">Personal foul</button>
+<button type="button" data-call="No call" class="rounded-full border border-white/20 px-4 py-2 text-sm text-slate-200 hover:border-[#CCFF00] hover:text-[#CCFF00] transition-colors">No call</button>
+</div>
+</section>
+
+<div class="flex items-center gap-4">
+<button id="analyze-submit" type="submit" class="bg-[#CCFF00] text-black px-6 py-3 rounded-sm font-bold text-sm uppercase hover:opacity-90 active:scale-95 transition-all">Analyze Play</button>
+<a href="{% url 'home' %}" class="text-sm text-slate-400 hover:text-white">Cancel</a>
+</div>
+</form>
+
+<div id="processing-bar" class="hidden glass-panel p-6">
+<div class="flex items-center justify-between text-sm font-semibold text-slate-200">
+<span>Processing upload...</span>
+<span class="text-[#CCFF00]">Working</span>
+</div>
+<div class="mt-3 h-1 w-full overflow-hidden rounded-full bg-white/10">
+<div class="h-full w-1/3 animate-pulse rounded-full bg-[#CCFF00]"></div>
+</div>
+<p class="mt-2 text-xs text-slate-400">Extracting representative frames and generating temporal visual description.</p>
+</div>
+
+{% if upload_result %}
+<section class="space-y-6">
+  <div class="glass-panel p-6">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <h2 class="text-xl font-semibold text-white uppercase tracking-wide">Analysis Result</h2>
+      {% if upload_result.analysis_status == "Analyzed" %}
+      <span class="rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-bold uppercase tracking-wide text-emerald-300">{{ upload_result.analysis_status_label }}</span>
+      {% elif upload_result.analysis_status == "Partial" %}
+      <span class="rounded-full bg-amber-500/20 px-3 py-1 text-xs font-bold uppercase tracking-wide text-amber-300">{{ upload_result.analysis_status_label }}</span>
+      {% else %}
+      <span class="rounded-full bg-red-500/20 px-3 py-1 text-xs font-bold uppercase tracking-wide text-red-300">{{ upload_result.analysis_status_label }}</span>
+      {% endif %}
+    </div>
+    <p class="mt-3 text-sm text-slate-300">{{ upload_result.analysis_status_message }}</p>
+
+    <div class="mt-5">
+      <video controls class="w-full rounded-lg border border-white/10 bg-black">
+        <source src="{{ upload_result.video_url }}">
+        Your browser does not support the video tag.
+      </video>
+    </div>
+
+    <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+      <div><dt class="text-slate-500 uppercase text-xs">Original call</dt><dd class="text-slate-100">{{ upload_result.original_call }}</dd></div>
+      <div><dt class="text-slate-500 uppercase text-xs">Sport</dt><dd class="text-slate-100">{{ upload_result.sport }}</dd></div>
+      <div><dt class="text-slate-500 uppercase text-xs">File size</dt><dd class="text-slate-100">{{ upload_result.file_size }}</dd></div>
+      <div><dt class="text-slate-500 uppercase text-xs">Filename</dt><dd class="text-slate-100 break-all">{{ upload_result.filename }}</dd></div>
+      <div><dt class="text-slate-500 uppercase text-xs">Started</dt><dd class="text-slate-100">{{ upload_result.analysis_started_at }}</dd></div>
+      <div><dt class="text-slate-500 uppercase text-xs">Finished</dt><dd class="text-slate-100">{{ upload_result.analysis_finished_at }}</dd></div>
+      <div><dt class="text-slate-500 uppercase text-xs">Duration</dt><dd class="text-slate-100">{{ upload_result.analysis.metadata.duration_seconds|default:"Not available" }}{% if upload_result.analysis.metadata.duration_seconds %} s{% endif %}</dd></div>
+      <div><dt class="text-slate-500 uppercase text-xs">FPS</dt><dd class="text-slate-100">{{ upload_result.analysis.metadata.fps|default:"Not available" }}</dd></div>
+      <div><dt class="text-slate-500 uppercase text-xs">Total frames</dt><dd class="text-slate-100">{{ upload_result.analysis.metadata.total_frames|default:"Not available" }}</dd></div>
+    </dl>
+  </div>
+
+  {% if upload_result.analysis.video_summary %}
+  <div class="glass-panel p-6">
+    <h3 class="text-sm font-semibold uppercase tracking-widest text-slate-400">Visual Analyst Report</h3>
+    <p class="mt-3 text-sm leading-6 text-slate-200">{{ upload_result.analysis.video_summary }}</p>
+  </div>
+  {% endif %}
+
+  {% if upload_result.analysis.key_events %}
+  <div class="glass-panel p-6">
+    <h3 class="text-sm font-semibold uppercase tracking-widest text-slate-400">AI-generated key events</h3>
+    <ul class="mt-3 space-y-2 text-sm text-slate-200">
+      {% for event in upload_result.analysis.key_events %}
+      <li>{{ event.timestamp }} ({{ event.frame_id }}) - {{ event.description }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if upload_result.analysis.possible_critical_moments %}
+  <div class="glass-panel p-6">
+    <h3 class="text-sm font-semibold uppercase tracking-widest text-slate-400">Possible Critical Moments</h3>
+    <ul class="mt-3 space-y-2 text-sm text-slate-200">
+      {% for moment in upload_result.analysis.possible_critical_moments %}
+      <li>{{ moment.timestamp }} ({{ moment.frame_id }}) - {{ moment.description }} ({{ moment.why_relevant }})</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if upload_result.analysis.recommended_frames_for_verdict_agent %}
+  <div class="glass-panel p-6">
+    <h3 class="text-sm font-semibold uppercase tracking-widest text-slate-400">Recommended Frames for Verdict Agent</h3>
+    <ul class="mt-3 space-y-2 text-sm text-slate-200">
+      {% for item in upload_result.analysis.recommended_frames_for_verdict_agent %}
+      <li>{{ item.frame_id }} at {{ item.timestamp }} - {{ item.reason }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if upload_result.analysis.limitations %}
+  <div class="glass-panel p-6">
+    <h3 class="text-sm font-semibold uppercase tracking-widest text-slate-400">AI-generated limitations</h3>
+    <ul class="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-200">
+      {% for limitation in upload_result.analysis.limitations %}
+      <li>{{ limitation }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if upload_result.analysis.evidence_frames %}
+  <div class="glass-panel p-6">
+    <h3 class="text-sm font-semibold uppercase tracking-widest text-slate-400">Selected Evidence Frames Sent to AI</h3>
+    <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {% for frame in upload_result.analysis.evidence_frames %}
+      <div class="rounded-lg border border-white/10 bg-black/20 p-3">
+        <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">{{ frame.timestamp }}</p>
+        <p class="mt-1 text-xs text-slate-500">{{ frame.frame_id }}</p>
+        {% if frame.selection_reason %}
+        <p class="mt-1 text-xs text-slate-500">{{ frame.selection_reason }}</p>
+        {% endif %}
+        <img src="{{ frame.frame_url }}" alt="Evidence frame {{ forloop.counter }}" class="mt-2 w-full rounded-md border border-white/10">
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if upload_result.analysis.error %}
+  <div class="rounded-lg border border-amber-400/30 bg-amber-500/10 p-4">
+    <h3 class="text-sm font-semibold uppercase tracking-wide text-amber-200">AI warning</h3>
+    <p class="mt-2 text-sm text-amber-100">{{ upload_result.analysis.error }}</p>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+</div>
+</main>
+
 <script>
-    document.querySelectorAll("[data-call]").forEach(function (button) {
-        button.addEventListener("click", function () {
-            const originalCallInput = document.getElementById("original_call");
-            originalCallInput.value = button.dataset.call;
-            originalCallInput.focus();
-        });
+  document.querySelectorAll('[data-call]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      const input = document.getElementById('original_call');
+      input.value = button.dataset.call;
+      input.focus();
     });
+  });
 
-    const analyzeForm = document.getElementById("analyze-form");
-    const analyzeSubmit = document.getElementById("analyze-submit");
-    const processingBar = document.getElementById("processing-bar");
+  const videoInput = document.getElementById('video');
+  const videoName = document.getElementById('video-name');
+  videoInput.addEventListener('change', function () {
+    if (videoInput.files.length > 0) {
+      videoName.textContent = videoInput.files[0].name;
+    } else {
+      videoName.textContent = '';
+    }
+  });
 
-    analyzeForm.addEventListener("submit", function () {
-        analyzeSubmit.disabled = true;
-        analyzeSubmit.textContent = "Processing...";
-        processingBar.classList.remove("hidden");
-    });
+  const analyzeForm = document.getElementById('analyze-form');
+  const analyzeSubmit = document.getElementById('analyze-submit');
+  const processingBar = document.getElementById('processing-bar');
+  analyzeForm.addEventListener('submit', function () {
+    analyzeSubmit.disabled = true;
+    analyzeSubmit.textContent = 'Processing...';
+    processingBar.classList.remove('hidden');
+  });
 </script>
-{% endblock %}
+</body>
+</html>
