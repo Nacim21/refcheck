@@ -148,7 +148,7 @@
 <div class="absolute inset-0 bg-gradient-to-br from-[#CCFF00]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
 <span class="material-symbols-outlined text-5xl text-[#CCFF00] mb-4">cloud_upload</span>
 <div class="font-headline-md text-2xl text-white mb-1 uppercase">Upload Sports Clip</div>
-<div class="font-mono-data text-slate-500 text-xs">(MP4, MOV, WEBM up to 50MB)</div>
+<div class="font-mono-data text-slate-500 text-xs">(MP4, MOV, WEBM up to 100MB)</div>
 <div id="video-name" class="mt-4 text-sm text-[#CCFF00]"></div>
 </label>
 <input id="video" name="video" type="file" accept=".mp4,.mov,.webm" class="hidden" required>
@@ -191,9 +191,11 @@
 </div>
 </form>
 
+<div id="client-error" class="hidden rounded-lg border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-100"></div>
+
 <div id="processing-bar" class="hidden glass-panel p-6">
 <div class="flex items-center justify-between text-sm font-semibold text-slate-200">
-<span>Processing upload...</span>
+<span id="processing-label">Processing upload...</span>
 <span class="text-[#CCFF00]">Working</span>
 </div>
 <div class="mt-3 h-1 w-full overflow-hidden rounded-full bg-white/10">
@@ -339,10 +341,139 @@
   const analyzeForm = document.getElementById('analyze-form');
   const analyzeSubmit = document.getElementById('analyze-submit');
   const processingBar = document.getElementById('processing-bar');
-  analyzeForm.addEventListener('submit', function () {
+  const processingLabel = document.getElementById('processing-label');
+  const clientError = document.getElementById('client-error');
+  const directUploadEndpoint = "{% url 'create_upload_url' %}";
+  const directUploadLimitBytes = 100 * 1024 * 1024;
+  const allowedVideoTypes = new Set(['video/mp4', 'video/quicktime', 'video/webm']);
+  const videoTypeByExtension = {
+    '.mp4': 'video/mp4',
+    '.mov': 'video/quicktime',
+    '.webm': 'video/webm'
+  };
+
+  function setProcessing(label) {
     analyzeSubmit.disabled = true;
     analyzeSubmit.textContent = 'Processing...';
+    processingLabel.textContent = label;
     processingBar.classList.remove('hidden');
+  }
+
+  function clearProcessing() {
+    analyzeSubmit.disabled = false;
+    analyzeSubmit.textContent = 'Analyze Play';
+  }
+
+  function showClientError(message) {
+    clientError.textContent = message;
+    clientError.classList.remove('hidden');
+  }
+
+  function clearClientError() {
+    clientError.textContent = '';
+    clientError.classList.add('hidden');
+  }
+
+  function getCsrfToken() {
+    const input = analyzeForm.querySelector('input[name="csrfmiddlewaretoken"]');
+    return input ? input.value : '';
+  }
+
+  function inferContentType(file) {
+    if (file.type && allowedVideoTypes.has(file.type)) {
+      return file.type;
+    }
+    const lowerName = file.name.toLowerCase();
+    const extension = Object.keys(videoTypeByExtension).find(function (item) {
+      return lowerName.endsWith(item);
+    });
+    return extension ? videoTypeByExtension[extension] : file.type;
+  }
+
+  analyzeForm.addEventListener('submit', async function (event) {
+    const file = videoInput.files.length > 0 ? videoInput.files[0] : null;
+    if (!file) {
+      return;
+    }
+
+    clearClientError();
+    const contentType = inferContentType(file);
+    if (!allowedVideoTypes.has(contentType)) {
+      event.preventDefault();
+      showClientError('Unsupported file type. Please upload an MP4, MOV, or WEBM video.');
+      return;
+    }
+    if (file.size > directUploadLimitBytes) {
+      event.preventDefault();
+      showClientError('File is too large. Maximum allowed size is 100 MB.');
+      return;
+    }
+
+    event.preventDefault();
+    setProcessing('Preparing direct upload...');
+
+    try {
+      const csrfToken = getCsrfToken();
+      const signedUrlResponse = await fetch(directUploadEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify({
+          filename: file.name,
+          content_type: contentType
+        })
+      });
+
+      if (!signedUrlResponse.ok) {
+        const errorPayload = await signedUrlResponse.json().catch(function () { return {}; });
+        throw new Error(errorPayload.error || (errorPayload.errors || []).join(' ') || 'Could not create upload URL.');
+      }
+
+      const signedUrlPayload = await signedUrlResponse.json();
+      setProcessing('Uploading video to cloud storage...');
+      const uploadResponse = await fetch(signedUrlPayload.upload_url, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': contentType
+        },
+        body: file
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error('Cloud upload failed. Please try again.');
+      }
+
+      setProcessing('Running analysis...');
+      const analysisResponse = await fetch(analyzeForm.action, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify({
+          sport: 'Basketball',
+          initial_call: document.getElementById('original_call').value,
+          video_gcs_path: signedUrlPayload.gcs_path,
+          filename: file.name,
+          file_size: file.size,
+          content_type: contentType
+        })
+      });
+
+      const analysisPayload = await analysisResponse.json().catch(function () { return {}; });
+      if (!analysisResponse.ok) {
+        throw new Error((analysisPayload.errors || []).join(' ') || analysisPayload.error || 'Analysis request failed.');
+      }
+      window.location.href = analysisPayload.redirect_url || "{% url 'result' %}";
+    } catch (error) {
+      clearProcessing();
+      const message = error && error.message === 'Failed to fetch'
+        ? 'Direct upload to GCS was blocked by the browser. Check the bucket CORS config for this origin and retry.'
+        : (error.message || 'Upload failed.');
+      showClientError(message);
+    }
   });
 </script>
 </body>
