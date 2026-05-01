@@ -16,11 +16,12 @@ def _format_timestamp(seconds: float) -> str:
 
 def _normalize_call_type(value: str) -> str:
     allowed = {
-        "blocking",
-        "charging",
+        "blocking/charging",
         "traveling",
         "goaltending",
+        "shooting foul",
         "personal foul",
+        "out of bounds",
         "no-call",
         "unclear",
     }
@@ -38,6 +39,19 @@ def _normalize_evidence_quality(value: str) -> str:
     if candidate in {"Good", "Limited", "Poor"}:
         return candidate
     return "Poor"
+
+
+def _normalize_why_relevant(value: str) -> str:
+    allowed = {
+        "possible contact",
+        "defender position",
+        "ball release",
+        "referee signal",
+        "boundary",
+        "other",
+    }
+    candidate = (value or "").strip().lower()
+    return candidate if candidate in allowed else "other"
 
 
 def _strip_code_fences(text: str) -> str:
@@ -111,7 +125,6 @@ def _candidate_indices(total_frames: int, fps: float, duration: float) -> list[i
     indices = list(range(start_frame, max(start_frame + 1, end_frame + 1), step))
     if not indices:
         indices = [max(0, total_frames // 2)]
-    # Cap candidates to keep payload and CPU bounded.
     max_candidates = 30
     if len(indices) > max_candidates:
         sampled = []
@@ -119,14 +132,11 @@ def _candidate_indices(total_frames: int, fps: float, duration: float) -> list[i
             pos = int(round(i * (len(indices) - 1) / (max_candidates - 1)))
             sampled.append(indices[pos])
         indices = sampled
-    # Avoid over-weighting exact 0.00 as primary moment; keep it only if needed.
-    indices = sorted(set(indices))
-    return indices
+    return sorted(set(indices))
 
 
 def _collect_candidates(capture, indices: list[int], fps: float):
     import cv2
-    import numpy as np
 
     candidates = []
     prev_small_gray = None
@@ -138,7 +148,6 @@ def _collect_candidates(capture, indices: list[int], fps: float):
         if not ok or frame is None:
             continue
 
-        # Preserve quality for previews and Gemini, but cap width.
         max_width = 1024
         original_h, original_w = frame.shape[:2]
         if original_w > max_width:
@@ -146,7 +155,6 @@ def _collect_candidates(capture, indices: list[int], fps: float):
             resized_h = int(original_h * scale)
             frame = cv2.resize(frame, (max_width, resized_h), interpolation=cv2.INTER_AREA)
 
-        # Lightweight analysis frame.
         small = cv2.resize(frame, (320, 180), interpolation=cv2.INTER_AREA)
         gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
         sharpness = float(cv2.Laplacian(gray, cv2.CV_64F).var())
@@ -157,7 +165,6 @@ def _collect_candidates(capture, indices: list[int], fps: float):
             motion = float(diff.mean() / 255.0)
 
         hsv = cv2.cvtColor(small, cv2.COLOR_BGR2HSV)
-        # Rough hardwood floor color heuristic.
         court_mask = cv2.inRange(hsv, (8, 30, 60), (35, 220, 255))
         court_ratio = float(court_mask.mean() / 255.0)
 
@@ -167,7 +174,6 @@ def _collect_candidates(capture, indices: list[int], fps: float):
         center = gray[r0:r1, c0:c1]
         edges = cv2.Canny(center, 80, 160)
         center_edge_density = float(edges.mean() / 255.0)
-
         relevance = min(1.0, (court_ratio * 1.3) + (center_edge_density * 1.6))
 
         hist = cv2.calcHist([hsv], [0, 1], None, [24, 24], [0, 180, 0, 256])
@@ -222,14 +228,11 @@ def _select_evidence_candidates(candidates: list[dict], target_min: int = 8, tar
         candidate["score"] = float(score)
         candidate["motion_norm"] = float(motion_norm[i])
 
-    # Critical moments by motion.
     ranked_motion = sorted(candidates, key=lambda c: c["motion_norm"], reverse=True)
     top_motion = ranked_motion[:3]
-
     selected_ids = set()
     selected = []
 
-    # Include pre/during/post around high motion candidates.
     for peak in top_motion:
         peak_pos = peak["candidate_id"]
         for offset, reason in [(-1, "pre-contact context"), (0, "high motion"), (1, "post-contact context")]:
@@ -247,19 +250,15 @@ def _select_evidence_candidates(candidates: list[dict], target_min: int = 8, tar
         if len(selected) >= target_max:
             break
 
-    # Fill remaining slots by score while ensuring diversity and reducing duplicates.
     ranked_score = sorted(candidates, key=lambda c: c["score"], reverse=True)
     for item in ranked_score:
         if len(selected) >= target_max:
             break
         if item["candidate_id"] in selected_ids:
             continue
-
-        # Diversity gate: avoid frames too close in candidate order.
         too_close = any(abs(item["candidate_id"] - existing["candidate_id"]) <= 1 for existing in selected)
         if too_close and len(selected) >= target_min:
             continue
-
         if item["selection_reason"] == "selected for temporal coverage":
             if item["motion_norm"] >= 0.55:
                 item["selection_reason"] = "high motion"
@@ -267,7 +266,6 @@ def _select_evidence_candidates(candidates: list[dict], target_min: int = 8, tar
                 item["selection_reason"] = "selected for temporal coverage"
             else:
                 item["selection_reason"] = "possible contact context"
-
         selected.append(item)
         selected_ids.add(item["candidate_id"])
 
@@ -276,7 +274,6 @@ def _select_evidence_candidates(candidates: list[dict], target_min: int = 8, tar
         selected = selected[:target_max]
 
     if len(selected) < target_min:
-        # Backfill from temporal coverage.
         for item in sorted(candidates, key=lambda c: c["timestamp_seconds"]):
             if item["candidate_id"] in selected_ids:
                 continue
@@ -285,7 +282,6 @@ def _select_evidence_candidates(candidates: list[dict], target_min: int = 8, tar
             if len(selected) >= target_min:
                 break
         selected = sorted(selected, key=lambda c: c["timestamp_seconds"])
-
     return selected
 
 
@@ -294,9 +290,36 @@ def _clean_for_session(result: dict) -> None:
         frame.pop("local_path", None)
 
 
+def _default_recommended_frames(evidence_frames: list[dict]) -> list[dict]:
+    if not evidence_frames:
+        return []
+    priority = []
+    for frame in evidence_frames:
+        reason = frame.get("selection_reason", "")
+        weight = 0
+        if "high motion" in reason:
+            weight = 3
+        elif "pre-contact" in reason or "post-contact" in reason:
+            weight = 2
+        elif "possible contact" in reason:
+            weight = 1
+        priority.append((weight, frame))
+    priority.sort(key=lambda item: item[0], reverse=True)
+    top = [item[1] for item in priority[:5]]
+    return [
+        {
+            "frame_id": frame["frame_id"],
+            "timestamp": frame["timestamp"],
+            "reason": frame.get("selection_reason", "selected for temporal coverage"),
+        }
+        for frame in top
+    ]
+
+
 def analyze_video_with_gemini(video_path: str, original_call: str | None = None) -> dict:
     model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     result = {
+        "agent": "visual_analyst",
         "success": False,
         "status": "Failed",
         "metadata": {
@@ -308,16 +331,17 @@ def analyze_video_with_gemini(video_path: str, original_call: str | None = None)
         },
         "evidence_frames": [],
         "evidence_selection_summary": "",
-        "possible_critical_moments": [],
         "video_summary": "",
         "key_events": [],
+        "possible_critical_moments": [],
         "visible_call_type": "unclear",
+        "visible_call_type_reason": "",
+        "officiating_issue_summary": "",
         "evidence_quality": "Poor",
         "can_reason_about_call": False,
         "missing_evidence": [],
-        "officiating_issue_summary": "",
-        "referee_signal_interpretation": "",
         "limitations": [],
+        "recommended_frames_for_verdict_agent": [],
         "confidence_in_visual_description": "Low",
         "error": None,
         "error_type": None,
@@ -393,7 +417,6 @@ def analyze_video_with_gemini(video_path: str, original_call: str | None = None)
     frames_dir = settings.MEDIA_ROOT / "frames"
     frames_dir.mkdir(parents=True, exist_ok=True)
 
-    # Candidate scan + scoring; fallback to uniform if this block fails.
     selected_candidates = []
     selection_mode = "scored"
     try:
@@ -402,18 +425,16 @@ def analyze_video_with_gemini(video_path: str, original_call: str | None = None)
         candidates = _collect_candidates(capture=capture, indices=scan_indices, fps=fps)
         if not candidates:
             raise RuntimeError("No candidates after scan.")
-
         selected_candidates = _select_evidence_candidates(candidates, target_min=8, target_max=12)
         if not selected_candidates:
             raise RuntimeError("Scoring produced no selected candidates.")
-
         result["debug"]["scoring_top_candidates"] = [
             {
-                "timestamp": candidate["timestamp"],
-                "reason": candidate.get("selection_reason", ""),
-                "score": round(candidate.get("score", 0.0), 3),
+                "timestamp": c["timestamp"],
+                "reason": c.get("selection_reason", ""),
+                "score": round(c.get("score", 0.0), 3),
             }
-            for candidate in sorted(candidates, key=lambda c: c.get("score", 0.0), reverse=True)[:5]
+            for c in sorted(candidates, key=lambda item: item.get("score", 0.0), reverse=True)[:5]
         ]
     except Exception:
         selection_mode = "uniform_fallback"
@@ -434,18 +455,16 @@ def analyze_video_with_gemini(video_path: str, original_call: str | None = None)
         return result
 
     evidence_frames = []
-    for i, candidate in enumerate(selected_candidates):
+    for i, candidate in enumerate(selected_candidates, start=1):
         frame_name = f"{uuid4().hex}_{i}.jpg"
         frame_path = frames_dir / frame_name
-        wrote = cv2.imwrite(
-            str(frame_path),
-            candidate["frame"],
-            [int(cv2.IMWRITE_JPEG_QUALITY), 82],
-        )
+        wrote = cv2.imwrite(str(frame_path), candidate["frame"], [int(cv2.IMWRITE_JPEG_QUALITY), 82])
         if not wrote:
             continue
+        frame_id = f"frame_{i:03d}"
         evidence_frames.append(
             {
+                "frame_id": frame_id,
                 "timestamp": candidate["timestamp"],
                 "frame_url": f"{settings.MEDIA_URL}frames/{frame_name}",
                 "frame_path": f"frames/{frame_name}",
@@ -454,10 +473,18 @@ def analyze_video_with_gemini(video_path: str, original_call: str | None = None)
             }
         )
 
+    if not evidence_frames:
+        result["error_type"] = "frame_extraction_failure"
+        result["error"] = "Could not save selected evidence frames."
+        result["debug"]["error_type"] = result["error_type"]
+        result["debug"]["error_message"] = result["error"]
+        return result
+
     result["evidence_frames"] = evidence_frames
     result["status"] = "Partial"
     result["debug"]["frames_extracted_count"] = len(evidence_frames)
     result["debug"]["selected_evidence_count"] = len(evidence_frames)
+    result["recommended_frames_for_verdict_agent"] = _default_recommended_frames(evidence_frames)
 
     if selection_mode == "scored":
         result["evidence_selection_summary"] = (
@@ -472,29 +499,23 @@ def analyze_video_with_gemini(video_path: str, original_call: str | None = None)
 
     critical_moments = []
     for frame in evidence_frames[:6]:
-        reason = frame.get("selection_reason", "possible contact context")
+        reason = frame.get("selection_reason", "selected for temporal coverage")
         why_map = {
             "high motion": "possible contact",
-            "pre-contact context": "player positioning",
+            "pre-contact context": "defender position",
             "post-contact context": "possible contact",
-            "selected for temporal coverage": "unclear",
-            "possible contact context": "player positioning",
+            "selected for temporal coverage": "other",
+            "possible contact context": "defender position",
         }
         critical_moments.append(
             {
                 "timestamp": frame["timestamp"],
+                "frame_id": frame["frame_id"],
                 "description": f"Frame selected as {reason}.",
-                "why_relevant": why_map.get(reason, "unclear"),
+                "why_relevant": why_map.get(reason, "other"),
             }
         )
     result["possible_critical_moments"] = critical_moments
-
-    if not evidence_frames:
-        result["error_type"] = "frame_extraction_failure"
-        result["error"] = "Could not save selected evidence frames."
-        result["debug"]["error_type"] = result["error_type"]
-        result["debug"]["error_message"] = result["error"]
-        return result
 
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
@@ -502,53 +523,51 @@ def analyze_video_with_gemini(video_path: str, original_call: str | None = None)
         result["error"] = "GEMINI_API_KEY is not configured. Frame extraction worked, but AI analysis is unavailable."
         result["limitations"] = ["AI description unavailable because Gemini API key is missing."]
         result["missing_evidence"] = [
-            "No model-generated officiating interpretation was produced.",
-            "Before/contact/after continuity cannot be assessed without AI output.",
+            "No model-generated visual analyst interpretation was produced.",
+            "Before/contact/after continuity cannot be assessed without model output.",
         ]
-        result["officiating_issue_summary"] = "Evidence is insufficient because no AI interpretation was returned."
-        result["referee_signal_interpretation"] = "No reliable referee signal interpretation is available."
-        result["debug"]["error_type"] = result["error_type"]
-        result["debug"]["error_message"] = result["error"]
+        result["officiating_issue_summary"] = "Evidence is insufficient because visual analysis output is missing."
+        result["visible_call_type_reason"] = "Unable to determine visible call type without model output."
         _clean_for_session(result)
         return result
 
     prompt_lines = [
-        "You are analyzing selected evidence frames from a basketball video.",
-        "These frames were selected around likely action/contact moments and may not cover the full continuous clip.",
-        "Use the timestamps to infer before/during/after sequence when possible.",
-        "Focus on officiating-relevant evidence: contact, defender position, offensive player movement, ball location, referee signals, and sequence around possible call.",
+        "You are Agent 1: Visual Analyst for sports officiating review.",
+        "You are NOT the referee judge.",
+        "You only see selected frames, not the full continuous video.",
+        "Do not decide Fair Call or Bad Call.",
+        "Do not say whether the official was correct or incorrect.",
+        "Do not cite official rules and do not apply rulebook reasoning.",
+        "Do not infer motion, contact, intent, or timing unless directly supported by selected frames.",
         "Distinguish visible game events from officiating-relevant evidence.",
-        "A referee raising an arm must not automatically be interpreted as a foul.",
-        "Scoreboard changes must not be treated as proof of a correct or incorrect call.",
-        "If before/contact/after continuity is missing, mark evidence_quality as Limited or Poor.",
-        "If you cannot reason about the call from selected frames, set can_reason_about_call to false.",
-        "Explain exactly what evidence is missing.",
-        "Explicitly state if selected frames are insufficient.",
-        "Do not give a final Fair Call or Bad Call verdict.",
-        "Do not cite rules.",
+        "If evidence is insufficient, be explicit and set can_reason_about_call to false.",
+        "If visible call type is unclear, set visible_call_type to 'unclear'.",
+        "Recommend which frames should be reviewed by a later Verdict Agent.",
         "Return valid JSON only with this schema:",
         "{",
+        '  "agent": "visual_analyst",',
         '  "video_summary": "string",',
-        '  "key_events": [{"timestamp": "M:SS.ss", "description": "string"}],',
-        '  "visible_call_type": "blocking|charging|traveling|goaltending|personal foul|no-call|unclear",',
-        '  "limitations": ["string"],',
-        '  "confidence_in_visual_description": "Low|Medium|High",',
-        '  "evidence_selection_summary": "string",',
+        '  "key_events": [{"timestamp": "M:SS.ss", "frame_id": "frame_00x", "description": "string"}],',
+        '  "possible_critical_moments": [',
+        '    {"timestamp": "M:SS.ss", "frame_id": "frame_00x", "description": "string", "why_relevant": "possible contact|defender position|ball release|referee signal|boundary|other"}',
+        "  ],",
+        '  "visible_call_type": "blocking/charging|traveling|goaltending|shooting foul|personal foul|out of bounds|no-call|unclear",',
+        '  "visible_call_type_reason": "string",',
+        '  "officiating_issue_summary": "string",',
         '  "evidence_quality": "Good|Limited|Poor",',
         '  "can_reason_about_call": true,',
         '  "missing_evidence": ["string"],',
-        '  "officiating_issue_summary": "string",',
-        '  "referee_signal_interpretation": "string",',
-        '  "possible_critical_moments": [',
-        '    {"timestamp": "M:SS.ss", "description": "string", "why_relevant": "possible contact|player positioning|referee signal|unclear"}',
-        "  ]",
+        '  "limitations": ["string"],',
+        '  "recommended_frames_for_verdict_agent": [{"frame_id":"frame_00x","timestamp":"M:SS.ss","reason":"string"}]',
         "}",
     ]
     if original_call:
         prompt_lines.append(f'User-provided original call: "{original_call}".')
-    prompt_lines.append("Evidence frames (timestamp -> reason):")
+    prompt_lines.append("Selected evidence frames in temporal order:")
     for frame in evidence_frames:
-        prompt_lines.append(f'- {frame["timestamp"]} -> {frame.get("selection_reason", "context")}')
+        prompt_lines.append(
+            f'- {frame["frame_id"]} at {frame["timestamp"]} -> {frame.get("selection_reason", "context")}'
+        )
     prompt = "\n".join(prompt_lines)
 
     raw_text = ""
@@ -576,13 +595,11 @@ def analyze_video_with_gemini(video_path: str, original_call: str | None = None)
             result["error"] = "AI returned an empty response."
             result["limitations"] = ["The AI response was empty for this request."]
             result["missing_evidence"] = [
-                "No sequence interpretation was returned by the model.",
-                "Contact continuity could not be evaluated.",
+                "No visual analyst sequence interpretation was returned.",
+                "Unable to assess whether evidence supports later verdict reasoning.",
             ]
-            result["officiating_issue_summary"] = "No officiating evidence interpretation was returned."
-            result["referee_signal_interpretation"] = "No referee signal interpretation available."
-            result["debug"]["error_type"] = result["error_type"]
-            result["debug"]["error_message"] = result["error"]
+            result["officiating_issue_summary"] = "No officiating-focused visual interpretation was returned."
+            result["visible_call_type_reason"] = "No model output available."
             _clean_for_session(result)
             return result
 
@@ -592,17 +609,15 @@ def analyze_video_with_gemini(video_path: str, original_call: str | None = None)
             result["video_summary"] = _strip_code_fences(raw_text)[:900]
             result["limitations"] = [
                 "Structured JSON parsing failed; showing raw AI summary text instead.",
-                "Selected evidence frames may be insufficient for full temporal reconstruction.",
+                "Selected frames may be insufficient for complete temporal understanding.",
             ]
             result["missing_evidence"] = [
-                "Structured evidence-sufficiency fields were not returned in JSON.",
-                "Continuous before/contact/after sequence remains uncertain.",
+                "Structured visual analyst fields were not returned in JSON.",
+                "Frame-linked critical moments and recommendations are uncertain.",
             ]
-            result["officiating_issue_summary"] = "Unstructured output; officiating evidence sufficiency is uncertain."
-            result["referee_signal_interpretation"] = "Referee signal meaning is uncertain from unstructured output."
+            result["officiating_issue_summary"] = "Unstructured output; officiating evidence assessment is uncertain."
+            result["visible_call_type_reason"] = "Unstructured model output did not provide reliable call type rationale."
             result["error"] = "AI returned unstructured text."
-            result["debug"]["error_type"] = result["error_type"]
-            result["debug"]["error_message"] = "No JSON object found in Gemini output."
             _clean_for_session(result)
             return result
 
@@ -612,82 +627,104 @@ def analyze_video_with_gemini(video_path: str, original_call: str | None = None)
         key_events = payload.get("key_events") or []
         limitations = payload.get("limitations") or []
         critical_payload = payload.get("possible_critical_moments") or []
+        missing_evidence = payload.get("missing_evidence") or []
+        recommended_payload = payload.get("recommended_frames_for_verdict_agent") or []
+
+        frame_id_map = {frame["frame_id"]: frame for frame in evidence_frames}
 
         normalized_events = []
-        for event in key_events[:6]:
+        for event in key_events[:8]:
             if not isinstance(event, dict):
                 continue
             timestamp = str(event.get("timestamp", "")).strip()
+            frame_id = str(event.get("frame_id", "")).strip()
             description = str(event.get("description", "")).strip()
-            if timestamp and description:
-                normalized_events.append(
-                    {
-                        "timestamp": timestamp[:20],
-                        "description": description[:220],
-                    }
-                )
+            if not description:
+                continue
+            if frame_id not in frame_id_map:
+                frame_id = evidence_frames[0]["frame_id"] if evidence_frames else "frame_001"
+            if not timestamp:
+                timestamp = frame_id_map.get(frame_id, {}).get("timestamp", "")
+            normalized_events.append(
+                {"timestamp": timestamp[:20], "frame_id": frame_id, "description": description[:220]}
+            )
 
-        normalized_limitations = [
-            str(item).strip()[:220]
-            for item in limitations[:6]
-            if str(item).strip()
-        ]
-        missing_evidence = payload.get("missing_evidence") or []
-        normalized_missing_evidence = [
-            str(item).strip()[:220]
-            for item in missing_evidence[:6]
-            if str(item).strip()
-        ]
+        normalized_limitations = [str(item).strip()[:220] for item in limitations[:6] if str(item).strip()]
+        normalized_missing = [str(item).strip()[:220] for item in missing_evidence[:6] if str(item).strip()]
 
         normalized_critical = []
-        for item in critical_payload[:8]:
+        for item in critical_payload[:10]:
             if not isinstance(item, dict):
                 continue
             timestamp = str(item.get("timestamp", "")).strip()
+            frame_id = str(item.get("frame_id", "")).strip()
             description = str(item.get("description", "")).strip()
-            why = str(item.get("why_relevant", "unclear")).strip().lower()
-            if not timestamp or not description:
+            why = _normalize_why_relevant(item.get("why_relevant", "other"))
+            if not description:
                 continue
-            if why not in {"possible contact", "player positioning", "referee signal", "unclear"}:
-                why = "unclear"
+            if frame_id not in frame_id_map:
+                frame_id = evidence_frames[0]["frame_id"] if evidence_frames else "frame_001"
+            if not timestamp:
+                timestamp = frame_id_map.get(frame_id, {}).get("timestamp", "")
             normalized_critical.append(
                 {
                     "timestamp": timestamp[:20],
+                    "frame_id": frame_id,
                     "description": description[:220],
                     "why_relevant": why,
                 }
             )
 
+        normalized_recommended = []
+        for item in recommended_payload[:8]:
+            if not isinstance(item, dict):
+                continue
+            frame_id = str(item.get("frame_id", "")).strip()
+            timestamp = str(item.get("timestamp", "")).strip()
+            reason = str(item.get("reason", "")).strip()
+            if frame_id not in frame_id_map:
+                continue
+            if not timestamp:
+                timestamp = frame_id_map[frame_id]["timestamp"]
+            if not reason:
+                reason = "Useful visual evidence for later verdict reasoning."
+            normalized_recommended.append(
+                {"frame_id": frame_id, "timestamp": timestamp[:20], "reason": reason[:220]}
+            )
+
+        result["agent"] = str(payload.get("agent", "visual_analyst")).strip().lower() or "visual_analyst"
         result["video_summary"] = str(payload.get("video_summary", "")).strip()[:900]
         result["key_events"] = normalized_events
+        result["possible_critical_moments"] = normalized_critical if normalized_critical else result["possible_critical_moments"]
         result["visible_call_type"] = _normalize_call_type(payload.get("visible_call_type", ""))
+        result["visible_call_type_reason"] = str(payload.get("visible_call_type_reason", "")).strip()[:500]
+        result["officiating_issue_summary"] = str(payload.get("officiating_issue_summary", "")).strip()[:500]
         result["evidence_quality"] = _normalize_evidence_quality(payload.get("evidence_quality", ""))
         result["can_reason_about_call"] = bool(payload.get("can_reason_about_call", False))
-        result["missing_evidence"] = normalized_missing_evidence
-        result["officiating_issue_summary"] = str(payload.get("officiating_issue_summary", "")).strip()[:500]
-        result["referee_signal_interpretation"] = str(payload.get("referee_signal_interpretation", "")).strip()[:500]
+        result["missing_evidence"] = normalized_missing
         result["limitations"] = normalized_limitations
+        result["recommended_frames_for_verdict_agent"] = (
+            normalized_recommended if normalized_recommended else _default_recommended_frames(evidence_frames)
+        )
+
+        # Keep compatibility field.
         result["confidence_in_visual_description"] = _normalize_confidence(
             payload.get("confidence_in_visual_description", "")
         )
         payload_selection_summary = str(payload.get("evidence_selection_summary", "")).strip()
         if payload_selection_summary:
             result["evidence_selection_summary"] = payload_selection_summary[:400]
-        if normalized_critical:
-            result["possible_critical_moments"] = normalized_critical
 
         if not result["video_summary"]:
             result["error_type"] = "empty_gemini_response"
             result["error"] = "AI response was received but summary text was empty."
             result["limitations"] = ["AI returned structured data without a usable summary."]
             result["missing_evidence"] = [
-                "No usable sequence summary was returned.",
-                "Before/contact/after continuity remains unresolved.",
+                "No usable visual analyst summary was returned.",
+                "Unable to confirm continuity around potential call moment.",
             ]
-            result["officiating_issue_summary"] = "Insufficient summary to assess officiating context."
-            result["referee_signal_interpretation"] = "No reliable referee signal interpretation returned."
-            result["debug"]["error_type"] = result["error_type"]
-            result["debug"]["error_message"] = result["error"]
+            result["officiating_issue_summary"] = "Insufficient summary for later verdict reasoning."
+            result["visible_call_type_reason"] = "No reliable call-type rationale returned."
             _clean_for_session(result)
             return result
 
@@ -702,15 +739,14 @@ def analyze_video_with_gemini(video_path: str, original_call: str | None = None)
         result["video_summary"] = _strip_code_fences(raw_text)[:900]
         result["limitations"] = [
             "Structured JSON parsing failed; showing raw AI summary text instead.",
-            "Some expected analysis fields may be missing.",
+            "Some expected visual analyst fields may be missing.",
         ]
         result["missing_evidence"] = [
-            "Evidence sufficiency fields could not be parsed.",
-            "Continuous contact sequence remains uncertain.",
+            "Frame-linked event fields could not be parsed.",
+            "Evidence sufficiency judgement remains uncertain.",
         ]
-        result["officiating_issue_summary"] = "JSON parsing failed; evidence sufficiency is uncertain."
-        result["referee_signal_interpretation"] = "Referee signal interpretation unavailable due to parsing failure."
-        result["error"] = "AI output format could not be parsed as JSON."
+        result["officiating_issue_summary"] = "JSON parsing failed; visual analyst assessment is incomplete."
+        result["visible_call_type_reason"] = "Parsing failure prevented reliable call-type rationale extraction."
         result["debug"]["error_type"] = result["error_type"]
         result["debug"]["error_message"] = str(exc)[:300]
         _clean_for_session(result)
@@ -720,11 +756,11 @@ def analyze_video_with_gemini(video_path: str, original_call: str | None = None)
         result["error"] = "AI analysis could not be completed for this upload."
         result["limitations"] = ["Gemini API request failed before structured analysis could be produced."]
         result["missing_evidence"] = [
-            "Model response was not received successfully.",
-            "Before/contact/after continuity could not be evaluated.",
+            "No complete visual analyst output was received.",
+            "Cannot determine if evidence is sufficient for a later verdict agent.",
         ]
-        result["officiating_issue_summary"] = "Gemini request failed; officiating evidence assessment was not completed."
-        result["referee_signal_interpretation"] = "No referee signal interpretation available."
+        result["officiating_issue_summary"] = "Gemini request failed; visual analyst stage not completed."
+        result["visible_call_type_reason"] = "No call-type rationale available due to API failure."
         result["debug"]["error_type"] = result["error_type"]
         result["debug"]["error_message"] = str(exc)[:300]
         _clean_for_session(result)
