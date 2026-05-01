@@ -144,6 +144,90 @@
         </div>
     </div>
 
+    {% if upload_result.analysis.verdict %}
+    <div class="mt-6 rounded-xl border-2 border-slate-300 bg-slate-50 p-5 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-600">Verdict (Agent 2)</h2>
+            {% if upload_result.analysis.verdict.status == "Analyzed" %}
+                {% if upload_result.analysis.verdict.verdict == "Fair Call" %}
+                <span class="rounded-full bg-emerald-100 px-4 py-1 text-sm font-semibold text-emerald-800">{{ upload_result.analysis.verdict.verdict }}</span>
+                {% elif upload_result.analysis.verdict.verdict == "Bad Call" %}
+                <span class="rounded-full bg-rose-100 px-4 py-1 text-sm font-semibold text-rose-800">{{ upload_result.analysis.verdict.verdict }}</span>
+                {% else %}
+                <span class="rounded-full bg-amber-100 px-4 py-1 text-sm font-semibold text-amber-800">{{ upload_result.analysis.verdict.verdict }}</span>
+                {% endif %}
+            {% else %}
+            <span class="rounded-full bg-slate-200 px-4 py-1 text-sm font-semibold text-slate-700">{{ upload_result.analysis.verdict.status|default:"Unavailable" }}</span>
+            {% endif %}
+        </div>
+
+        {% if upload_result.analysis.verdict.status == "Analyzed" %}
+        <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+            <div>
+                <dt class="font-semibold text-slate-700">Verdict</dt>
+                <dd class="text-slate-700">{{ upload_result.analysis.verdict.verdict }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-slate-700">Confidence</dt>
+                <dd class="text-slate-700">{{ upload_result.analysis.verdict.confidence|default:"Low" }}</dd>
+            </div>
+        </dl>
+        <div class="mt-4">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Reasoning</h3>
+            <p class="mt-2 text-sm leading-6 text-slate-700">{{ upload_result.analysis.verdict.reasoning|default:"Not available." }}</p>
+        </div>
+        {% if upload_result.analysis.verdict.rule_basis %}
+        <div class="mt-4">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Rule basis</h3>
+            <p class="mt-2 text-sm text-slate-700">{{ upload_result.analysis.verdict.rule_basis }}</p>
+        </div>
+        {% endif %}
+        {% if upload_result.analysis.verdict.matched_rules %}
+        <div class="mt-4">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Matched rulebook passages</h3>
+            <ul class="mt-2 space-y-2 text-sm text-slate-700">
+                {% for rule in upload_result.analysis.verdict.matched_rules %}
+                <li>
+                    <span class="font-semibold">{% if rule.section %}{{ rule.section }}{% else %}{{ rule.rule_id }}{% endif %}</span>
+                    <span class="text-slate-500">(score {{ rule.score|floatformat:3 }})</span>
+                    {% if rule.text %}<p class="mt-1 leading-6">{{ rule.text }}</p>{% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% if upload_result.analysis.verdict.key_factors %}
+        <div class="mt-4">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Key factors</h3>
+            <ul class="mt-2 space-y-2 text-sm text-slate-700">
+                {% for factor in upload_result.analysis.verdict.key_factors %}
+                <li>{{ factor.frame_id }} at {{ factor.timestamp }} - {{ factor.factor }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% if upload_result.analysis.verdict.limitations %}
+        <div class="mt-4">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Verdict limitations</h3>
+            <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+                {% for item in upload_result.analysis.verdict.limitations %}
+                <li>{{ item }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% elif upload_result.analysis.verdict.status == "Skipped" %}
+        <p class="mt-4 text-sm text-slate-600">
+            Verdict skipped: {{ upload_result.analysis.verdict.skipped_reason|default:"preconditions not met." }}
+        </p>
+        {% else %}
+        <p class="mt-4 text-sm text-slate-600">
+            Verdict unavailable. {{ upload_result.analysis.verdict.error|default:"" }}
+        </p>
+        {% endif %}
+    </div>
+    {% endif %}
+
     <div class="mt-6 rounded-xl border border-slate-200 p-5">
         <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-600">Visual Analyst Report</h2>
         <dl class="mt-3 grid gap-3 text-sm sm:grid-cols-2">
