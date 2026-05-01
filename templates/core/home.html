@@ -1,38 +1,330 @@
-{% extends "base.html" %}
+﻿<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>RefCheck | Home</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+  .material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  }
+  .glass-panel {
+    background: rgba(45, 45, 46, 0.8);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  body {
+    background-color: #131314;
+    color: #e5e2e3;
+    font-family: 'Inter', sans-serif;
+  }
+</style>
+</head>
+<body class="overflow-x-hidden overflow-hidden">
+<header class="bg-[#2D2D2E]/80 backdrop-blur-2xl border-b border-white/10 flex justify-between items-center w-full px-6 h-16 fixed top-0 z-50">
+  <div class="flex items-center gap-8">
+    <a href="{% url 'home' %}" class="text-2xl font-black italic tracking-tighter text-[#CCFF00]" style="font-family:'Space Grotesk', sans-serif;">RefCheck</a>
+  </div>
+  <div class="flex items-center gap-4">
+    <button type="button" data-open-tab="analyze" class="bg-[#CCFF00] text-black px-4 py-2 rounded-sm font-bold text-xs uppercase hover:opacity-90">Start Review</button>
+  </div>
+</header>
 
-{% block title %}RefCheck AI | Home{% endblock %}
+<aside class="flex bg-[#1A1A1B] fixed left-0 top-16 h-[calc(100vh-64px)] w-[280px] border-r border-white/5 shadow-2xl flex-col py-4 gap-2 z-40">
+  <nav class="flex-grow flex flex-col gap-1 px-2">
+    <button id="tab-btn-home" type="button" data-tab-target="home" class="rounded-sm flex items-center gap-3 px-4 py-3 font-['Space_Grotesk'] text-sm font-bold uppercase">
+      <span class="material-symbols-outlined">home</span> Home
+    </button>
+    <button id="tab-btn-analyze" type="button" data-tab-target="analyze" class="rounded-sm flex items-center gap-3 px-4 py-3 font-['Space_Grotesk'] text-sm font-bold uppercase">
+      <span class="material-symbols-outlined">segment</span> Evidence Log
+    </button>
+    <div class="text-slate-500 flex items-center gap-3 px-4 py-3 font-['Space_Grotesk'] text-sm font-bold uppercase">
+      <span class="material-symbols-outlined">videocam</span> Live Feed
+    </div>
+  </nav>
+</aside>
 
-{% block content %}
-<section class="rounded-2xl border border-slate-200 bg-white p-8 md:p-12">
-    <p class="text-sm font-semibold uppercase tracking-wide text-slate-600">RefCheck AI</p>
-    <h1 class="mt-3 text-3xl font-bold tracking-tight text-slate-900 md:text-4xl">
-        AI-powered referee review for basketball calls
-    </h1>
-    <p class="mt-4 max-w-2xl text-base text-slate-700">
-        Upload a short basketball clip, add the original call, and get a rule-grounded verdict.
-    </p>
-    <div class="mt-8 flex flex-wrap gap-3">
-        <a href="{% url 'analyze' %}" class="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800">
-            Analyze a Play
-        </a>
-        <a href="{% url 'about' %}" class="rounded-lg border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-100">
-            How it works
-        </a>
-    </div>
-</section>
+<main id="app-main" class="ml-[280px] mt-16 h-[calc(100vh-64px)] overflow-hidden p-4 md:p-6 bg-[#131314]">
+  <div class="max-w-6xl mx-auto h-full">
+    <section id="tab-content-home" class="h-full grid grid-rows-[1fr_auto] gap-4">
+      <section class="relative min-h-0 h-full rounded-lg overflow-hidden border border-white/10">
+        <img
+          src="https://lh3.googleusercontent.com/aida-public/AB6AXuAu7wufmrvC3MQ1aD1HACYdc-Nrb9VRhqnQ-kB0V43Dsw9ZuHVFfDxytVdK7AgdaC17xi11nort29NQ8HMjg1PjnRGfHzTm0VHBgO4F7o9MD5sRtotKssbr1fIhR1HUJ1-_YR3275kPTi9XTTjsakVakTguX8YLHsadeuR1m1VZekP9kqKoJsSYEZXDetoRCI6Y3goSjEqJ4HYusIQ9qoQ2Jl0VuhDAeU64H0dttIQT02v7BP9aWgW8itNUR_bTp9bDd1mfwH34nW95"
+          alt="Basketball hero"
+          class="absolute inset-0 h-full w-full object-cover"
+        >
+        <div class="absolute inset-0 bg-gradient-to-r from-[#0e0e0f]/95 via-[#131314]/80 to-transparent"></div>
+        <div class="relative z-10 p-6 md:p-8 max-w-3xl">
+          <h1 class="text-4xl md:text-5xl font-bold leading-tight text-white" style="font-family:'Space Grotesk', sans-serif;">
+            Precision in Every Play.
+            <span class="text-[#CCFF00]">AI-powered</span>
+            referee review.
+          </h1>
+          <p class="mt-4 text-slate-300 text-lg">
+            Upload a short basketball clip and extract temporal evidence frames to describe what happened in sequence.
+          </p>
+          <div class="mt-6 flex flex-wrap gap-3">
+            <button type="button" data-open-tab="analyze" class="bg-[#CCFF00] text-black px-6 py-3 rounded-sm font-bold text-sm uppercase hover:opacity-90">
+              Analyze a Play
+            </button>
+          </div>
+        </div>
+      </section>
 
-<section class="mt-10 grid gap-4 md:grid-cols-3">
-    <div class="rounded-xl border border-slate-200 bg-white p-6">
-        <p class="text-sm font-semibold text-slate-500">Step 1</p>
-        <h2 class="mt-2 text-lg font-semibold text-slate-900">Upload a clip</h2>
-    </div>
-    <div class="rounded-xl border border-slate-200 bg-white p-6">
-        <p class="text-sm font-semibold text-slate-500">Step 2</p>
-        <h2 class="mt-2 text-lg font-semibold text-slate-900">AI reviews the play</h2>
-    </div>
-    <div class="rounded-xl border border-slate-200 bg-white p-6">
-        <p class="text-sm font-semibold text-slate-500">Step 3</p>
-        <h2 class="mt-2 text-lg font-semibold text-slate-900">Get a rule-based verdict</h2>
-    </div>
-</section>
-{% endblock %}
+      <section class="grid gap-4 md:grid-cols-3">
+        <div class="glass-panel p-5">
+          <p class="text-xs text-slate-400 uppercase tracking-widest">Step 1</p>
+          <h2 class="mt-2 text-lg font-semibold text-white">Upload a clip</h2>
+          <p class="mt-2 text-sm text-slate-400">Send a short basketball play from one angle.</p>
+        </div>
+        <div class="glass-panel p-5">
+          <p class="text-xs text-slate-400 uppercase tracking-widest">Step 2</p>
+          <h2 class="mt-2 text-lg font-semibold text-white">AI reviews frames</h2>
+          <p class="mt-2 text-sm text-slate-400">Representative evidence frames are selected for temporal analysis.</p>
+        </div>
+        <div class="glass-panel p-5">
+          <p class="text-xs text-slate-400 uppercase tracking-widest">Step 3</p>
+          <h2 class="mt-2 text-lg font-semibold text-white">Get visual report</h2>
+          <p class="mt-2 text-sm text-slate-400">Read a structured visual description of the sequence.</p>
+        </div>
+      </section>
+    </section>
+
+    <section id="tab-content-analyze" class="space-y-8 hidden">
+      <section class="flex justify-between items-end gap-4">
+        <div>
+          <h1 class="text-4xl md:text-5xl text-white mb-2 uppercase" style="font-family:'Space Grotesk', sans-serif;">Video Analysis Engine</h1>
+          <p class="text-slate-400 max-w-xl">Upload basketball footage for temporal visual analysis with selected evidence frames.</p>
+        </div>
+      </section>
+
+      {% if errors %}
+      <section class="rounded-lg border border-red-400/30 bg-red-500/10 p-4">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-red-200">Please fix the following</h2>
+        <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-red-100">
+          {% for error in errors %}
+          <li>{{ error }}</li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+
+      <form id="analyze-form" action="{% url 'home' %}" method="post" enctype="multipart/form-data" class="space-y-8">
+        {% csrf_token %}
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-2 relative group">
+            <label for="video" class="w-full h-80 border-2 border-dashed border-white/10 rounded-lg flex flex-col items-center justify-center bg-white/5 hover:bg-[#CCFF00]/5 hover:border-[#CCFF00]/30 transition-all cursor-pointer overflow-hidden text-center px-6">
+              <span class="material-symbols-outlined text-5xl text-[#CCFF00] mb-4">cloud_upload</span>
+              <div class="text-2xl text-white mb-1 uppercase" style="font-family:'Space Grotesk', sans-serif;">Upload Sports Clip</div>
+              <div class="text-slate-500 text-xs">(MP4, MOV, WEBM up to 50MB)</div>
+              <div id="video-name" class="mt-4 text-sm text-[#CCFF00]"></div>
+            </label>
+            <input id="video" name="video" type="file" accept=".mp4,.mov,.webm" class="hidden" required>
+          </div>
+
+          <div class="glass-panel p-6 flex flex-col justify-between gap-6">
+            <div>
+              <div class="bg-secondary-container/20 text-secondary-fixed px-2 py-1 rounded text-[10px] font-bold uppercase tracking-widest inline-block">Ready</div>
+              <p class="mt-4 text-sm text-slate-300">Submit to start frame extraction and Gemini visual analysis.</p>
+            </div>
+            <div class="space-y-4">
+              <div>
+                <label for="original_call" class="block text-xs font-bold uppercase tracking-widest text-slate-400">Original Call</label>
+                <input id="original_call" name="original_call" type="text" value="{{ form_data.original_call }}" placeholder="e.g., Blocking foul" class="mt-2 w-full rounded-sm border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-[#CCFF00] focus:outline-none">
+              </div>
+              <div>
+                <label class="block text-xs font-bold uppercase tracking-widest text-slate-400">Sport</label>
+                <input type="text" value="Basketball" readonly class="mt-2 w-full rounded-sm border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-300">
+                <input type="hidden" name="sport" value="Basketball">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <section class="space-y-4">
+          <h2 class="text-slate-400 uppercase tracking-widest text-xs font-semibold">Suggested Calls</h2>
+          <div class="flex flex-wrap gap-3">
+            <button type="button" data-call="Blocking foul" class="rounded-full border border-white/20 px-4 py-2 text-sm text-slate-200 hover:border-[#CCFF00] hover:text-[#CCFF00]">Blocking foul</button>
+            <button type="button" data-call="Charging foul" class="rounded-full border border-white/20 px-4 py-2 text-sm text-slate-200 hover:border-[#CCFF00] hover:text-[#CCFF00]">Charging foul</button>
+            <button type="button" data-call="Traveling" class="rounded-full border border-white/20 px-4 py-2 text-sm text-slate-200 hover:border-[#CCFF00] hover:text-[#CCFF00]">Traveling</button>
+            <button type="button" data-call="Goaltending" class="rounded-full border border-white/20 px-4 py-2 text-sm text-slate-200 hover:border-[#CCFF00] hover:text-[#CCFF00]">Goaltending</button>
+            <button type="button" data-call="Personal foul" class="rounded-full border border-white/20 px-4 py-2 text-sm text-slate-200 hover:border-[#CCFF00] hover:text-[#CCFF00]">Personal foul</button>
+            <button type="button" data-call="No call" class="rounded-full border border-white/20 px-4 py-2 text-sm text-slate-200 hover:border-[#CCFF00] hover:text-[#CCFF00]">No call</button>
+          </div>
+        </section>
+
+        <div class="flex items-center gap-4">
+          <button id="analyze-submit" type="submit" class="bg-[#CCFF00] text-black px-6 py-3 rounded-sm font-bold text-sm uppercase hover:opacity-90 active:scale-95">Analyze Play</button>
+        </div>
+      </form>
+
+      <div id="processing-bar" class="hidden glass-panel p-6">
+        <div class="flex items-center justify-between text-sm font-semibold text-slate-200">
+          <span>Processing upload...</span>
+          <span class="text-[#CCFF00]">Working</span>
+        </div>
+        <div class="mt-3 h-1 w-full overflow-hidden rounded-full bg-white/10">
+          <div class="h-full w-1/3 animate-pulse rounded-full bg-[#CCFF00]"></div>
+        </div>
+        <p class="mt-2 text-xs text-slate-400">Extracting representative frames and generating temporal visual description.</p>
+      </div>
+
+      {% if upload_result %}
+      <section class="space-y-6">
+        <div class="glass-panel p-6">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <h2 class="text-xl font-semibold text-white uppercase tracking-wide">Analysis Result</h2>
+            {% if upload_result.analysis_status == "Analyzed" %}
+            <span class="rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-bold uppercase tracking-wide text-emerald-300">{{ upload_result.analysis_status_label }}</span>
+            {% elif upload_result.analysis_status == "Partial" %}
+            <span class="rounded-full bg-amber-500/20 px-3 py-1 text-xs font-bold uppercase tracking-wide text-amber-300">{{ upload_result.analysis_status_label }}</span>
+            {% else %}
+            <span class="rounded-full bg-red-500/20 px-3 py-1 text-xs font-bold uppercase tracking-wide text-red-300">{{ upload_result.analysis_status_label }}</span>
+            {% endif %}
+          </div>
+          <p class="mt-3 text-sm text-slate-300">{{ upload_result.analysis_status_message }}</p>
+
+          <div class="mt-5">
+            <video controls class="w-full rounded-lg border border-white/10 bg-black">
+              <source src="{{ upload_result.video_url }}">
+            </video>
+          </div>
+
+          <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+            <div><dt class="text-slate-500 uppercase text-xs">Original call</dt><dd class="text-slate-100">{{ upload_result.original_call }}</dd></div>
+            <div><dt class="text-slate-500 uppercase text-xs">Sport</dt><dd class="text-slate-100">{{ upload_result.sport }}</dd></div>
+            <div><dt class="text-slate-500 uppercase text-xs">File size</dt><dd class="text-slate-100">{{ upload_result.file_size }}</dd></div>
+            <div><dt class="text-slate-500 uppercase text-xs">Filename</dt><dd class="text-slate-100 break-all">{{ upload_result.filename }}</dd></div>
+            <div><dt class="text-slate-500 uppercase text-xs">Duration</dt><dd class="text-slate-100">{{ upload_result.analysis.metadata.duration_seconds|default:"Not available" }}{% if upload_result.analysis.metadata.duration_seconds %} s{% endif %}</dd></div>
+            <div><dt class="text-slate-500 uppercase text-xs">FPS / Frames</dt><dd class="text-slate-100">{{ upload_result.analysis.metadata.fps|default:"N/A" }} / {{ upload_result.analysis.metadata.total_frames|default:"N/A" }}</dd></div>
+          </dl>
+        </div>
+
+        {% if upload_result.analysis.video_summary %}
+        <div class="glass-panel p-6">
+          <h3 class="text-sm font-semibold uppercase tracking-widest text-slate-400">Visual Analyst Report</h3>
+          <p class="mt-3 text-sm leading-6 text-slate-200">{{ upload_result.analysis.video_summary }}</p>
+        </div>
+        {% endif %}
+
+        {% if upload_result.analysis.key_events %}
+        <div class="glass-panel p-6">
+          <h3 class="text-sm font-semibold uppercase tracking-widest text-slate-400">AI-generated key events</h3>
+          <ul class="mt-3 space-y-2 text-sm text-slate-200">
+            {% for event in upload_result.analysis.key_events %}
+            <li>{{ event.timestamp }} ({{ event.frame_id }}) - {{ event.description }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+
+        {% if upload_result.analysis.evidence_frames %}
+        <div class="glass-panel p-6">
+          <h3 class="text-sm font-semibold uppercase tracking-widest text-slate-400">Selected Evidence Frames Sent to AI</h3>
+          <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {% for frame in upload_result.analysis.evidence_frames %}
+            <div class="rounded-lg border border-white/10 bg-black/20 p-3">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">{{ frame.timestamp }}</p>
+              <p class="mt-1 text-xs text-slate-500">{{ frame.frame_id }}</p>
+              <img src="{{ frame.frame_url }}" alt="Evidence frame {{ forloop.counter }}" class="mt-2 w-full rounded-md border border-white/10">
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+      </section>
+      {% endif %}
+    </section>
+  </div>
+</main>
+
+<script>
+  const initialTabFromServer = "{{ active_tab|default:'home' }}";
+
+  function setSidebarActive(tabName) {
+    const homeBtn = document.getElementById('tab-btn-home');
+    const analyzeBtn = document.getElementById('tab-btn-analyze');
+
+    if (tabName === 'analyze') {
+      homeBtn.className = 'text-slate-500 hover:text-[#CCFF00] rounded-sm flex items-center gap-3 px-4 py-3 font-[\'Space_Grotesk\'] text-sm font-bold uppercase transition-colors';
+      analyzeBtn.className = 'bg-[#CCFF00] text-black rounded-sm flex items-center gap-3 px-4 py-3 font-[\'Space_Grotesk\'] text-sm font-bold uppercase';
+    } else {
+      homeBtn.className = 'bg-[#CCFF00] text-black rounded-sm flex items-center gap-3 px-4 py-3 font-[\'Space_Grotesk\'] text-sm font-bold uppercase';
+      analyzeBtn.className = 'text-slate-500 hover:text-[#CCFF00] rounded-sm flex items-center gap-3 px-4 py-3 font-[\'Space_Grotesk\'] text-sm font-bold uppercase transition-colors';
+    }
+  }
+
+  function switchTab(tabName) {
+    const homeTab = document.getElementById('tab-content-home');
+    const analyzeTab = document.getElementById('tab-content-analyze');
+    const main = document.getElementById('app-main');
+
+    if (tabName === 'analyze') {
+      homeTab.classList.add('hidden');
+      analyzeTab.classList.remove('hidden');
+      main.classList.remove('overflow-hidden');
+      main.classList.add('overflow-y-auto');
+      window.history.replaceState({}, '', '#analyze');
+    } else {
+      analyzeTab.classList.add('hidden');
+      homeTab.classList.remove('hidden');
+      main.classList.remove('overflow-y-auto');
+      main.classList.add('overflow-hidden');
+      window.history.replaceState({}, '', '#home');
+    }
+
+    setSidebarActive(tabName);
+  }
+
+  document.querySelectorAll('[data-tab-target]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      switchTab(button.dataset.tabTarget);
+    });
+  });
+
+  document.querySelectorAll('[data-open-tab="analyze"]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      switchTab('analyze');
+    });
+  });
+
+  document.querySelectorAll('[data-call]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      const input = document.getElementById('original_call');
+      input.value = button.dataset.call;
+      input.focus();
+    });
+  });
+
+  const videoInput = document.getElementById('video');
+  const videoName = document.getElementById('video-name');
+  if (videoInput) {
+    videoInput.addEventListener('change', function () {
+      videoName.textContent = videoInput.files.length > 0 ? videoInput.files[0].name : '';
+    });
+  }
+
+  const analyzeForm = document.getElementById('analyze-form');
+  const analyzeSubmit = document.getElementById('analyze-submit');
+  const processingBar = document.getElementById('processing-bar');
+
+  if (analyzeForm) {
+    analyzeForm.addEventListener('submit', function () {
+      analyzeSubmit.disabled = true;
+      analyzeSubmit.textContent = 'Processing...';
+      processingBar.classList.remove('hidden');
+    });
+  }
+
+  const tabFromHash = (window.location.hash || '').replace('#', '');
+  if (tabFromHash === 'analyze' || initialTabFromServer === 'analyze') {
+    switchTab('analyze');
+  } else {
+    switchTab('home');
+  }
+</script>
+</body>
+</html>
