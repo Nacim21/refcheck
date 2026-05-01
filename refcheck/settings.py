@@ -127,4 +127,5 @@ SESSION_ENGINE = "django.contrib.sessions.backends.db"
 STATIC_URL = 'static/'
 
 MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
+_default_media_root = Path("/tmp/refcheck-media") if os.getenv("VERCEL") else BASE_DIR / "media"
+MEDIA_ROOT = Path(os.getenv("DJANGO_MEDIA_ROOT") or os.getenv("REFCHECK_MEDIA_ROOT") or _default_media_root)

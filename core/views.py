@@ -126,6 +126,22 @@ def _gcp_credentials_info() -> dict | None:
         raise RuntimeError("GOOGLE_APPLICATION_CREDENTIALS_JSON is not valid JSON.") from exc
 
 
+def _raise_if_credentials_path_contains_json() -> None:
+    raw_credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
+    if raw_credentials_path.startswith("{") or "BEGIN PRIVATE KEY" in raw_credentials_path:
+        raise RuntimeError(
+            "GOOGLE_APPLICATION_CREDENTIALS must be a file path. "
+            "Use GOOGLE_APPLICATION_CREDENTIALS_JSON for full service account JSON."
+        )
+
+
+def _public_gcs_error_message() -> str:
+    return (
+        "GCS is not configured correctly. Set GOOGLE_APPLICATION_CREDENTIALS_JSON to the full "
+        "service account JSON, or configure GOOGLE_APPLICATION_CREDENTIALS as a file path."
+    )
+
+
 def _get_gcs_bucket():
     bucket_name = _gcs_bucket_name()
     if not bucket_name:
@@ -142,6 +158,7 @@ def _get_gcs_bucket():
             credentials=credentials,
             project=credentials_info.get("project_id"),
         ).bucket(bucket_name)
+    _raise_if_credentials_path_contains_json()
     return storage.Client().bucket(bucket_name)
 
 
@@ -258,11 +275,11 @@ def create_upload_url(request):
     try:
         try:
             cors_warning = _ensure_gcs_cors(request)
-        except Exception as exc:
-            cors_warning = f"GCS CORS could not be auto-configured: {exc}"
+        except Exception:
+            cors_warning = "GCS CORS could not be auto-configured."
         upload_url = _generate_signed_upload_url(gcs_path, content_type)
-    except Exception as exc:
-        return JsonResponse({"error": str(exc)}, status=503)
+    except Exception:
+        return JsonResponse({"error": _public_gcs_error_message()}, status=503)
 
     payload = {"upload_url": upload_url, "gcs_path": gcs_path}
     if cors_warning:
@@ -332,9 +349,12 @@ def _run_analysis_for_gcs_upload(payload: dict, original_call: str, sport: str) 
     if errors:
         return None, errors
 
-    temp_path = ""
     try:
         temp_path = _download_gcs_video_to_temp(gcs_path)
+    except Exception:
+        return None, [f"Could not download video from GCS: {_public_gcs_error_message()}"]
+
+    try:
         started_at = timezone.now()
         ai_result = analyze_video_with_gemini(
             video_path=temp_path,
@@ -355,14 +375,17 @@ def _run_analysis_for_gcs_upload(payload: dict, original_call: str, sport: str) 
             started_at=started_at,
             finished_at=finished_at,
         ), []
-    except Exception as exc:
-        return None, [f"Could not download video from GCS: {exc}"]
+    except OSError as exc:
+        if getattr(exc, "errno", None) == 30:
+            return None, ["Could not analyze video because the runtime filesystem is read-only."]
+        return None, ["Could not analyze video due to a filesystem error."]
+    except Exception:
+        return None, ["Could not analyze video after downloading it from GCS."]
     finally:
-        if temp_path:
-            try:
-                Path(temp_path).unlink(missing_ok=True)
-            except OSError:
-                pass
+        try:
+            Path(temp_path).unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def _handle_analyze_post(request, context: dict, template_name: str):
