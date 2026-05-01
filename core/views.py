@@ -27,7 +27,19 @@ def _status_message(analysis: dict) -> str:
     error_type = analysis.get("error_type")
 
     if status == "Analyzed":
-        return "Video was analyzed from representative frames."
+        base = "Video was analyzed from representative frames."
+        verdict = analysis.get("verdict") or {}
+        verdict_status = verdict.get("status")
+        if verdict_status == "Analyzed":
+            label = verdict.get("verdict", "Inconclusive")
+            confidence = verdict.get("confidence", "Low")
+            return f"Verdict: {label} ({confidence} confidence)."
+        if verdict_status == "Skipped":
+            reason = verdict.get("skipped_reason") or "preconditions not met."
+            return f"{base} Verdict skipped: {reason}"
+        if verdict_status == "Failed":
+            return f"{base} Verdict unavailable."
+        return base
     if error_type == "missing_api_key":
         return "Video processing completed, but AI description is unavailable because Gemini API key is missing."
     if error_type == "frame_extraction_failure":

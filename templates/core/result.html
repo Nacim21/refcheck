@@ -113,10 +113,6 @@
                 <dt class="font-semibold text-slate-700">Can reason about call</dt>
                 <dd class="text-slate-700">{% if upload_result.analysis.can_reason_about_call %}Yes{% else %}No{% endif %}</dd>
             </div>
-            <div>
-                <dt class="font-semibold text-slate-700">Possible replay duplicate</dt>
-                <dd class="text-slate-700">{% if upload_result.analysis.possible_replay_duplicate %}Yes{% else %}No{% endif %}</dd>
-            </div>
         </dl>
         <div class="mt-4">
             <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Sequence interpretation</h3>
@@ -143,6 +139,146 @@
             {% endif %}
         </div>
     </div>
+
+    {% if upload_result.analysis.verdict %}
+    <div class="mt-6 rounded-xl border-2 border-slate-300 bg-slate-50 p-5 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-600">Verdict (Agent 2)</h2>
+            {% if upload_result.analysis.verdict.status == "Analyzed" %}
+                {% if upload_result.analysis.verdict.verdict == "Fair Call" %}
+                <span class="rounded-full bg-emerald-100 px-4 py-1 text-sm font-semibold text-emerald-800">{{ upload_result.analysis.verdict.verdict }}</span>
+                {% elif upload_result.analysis.verdict.verdict == "Bad Call" %}
+                <span class="rounded-full bg-rose-100 px-4 py-1 text-sm font-semibold text-rose-800">{{ upload_result.analysis.verdict.verdict }}</span>
+                {% else %}
+                <span class="rounded-full bg-amber-100 px-4 py-1 text-sm font-semibold text-amber-800">{{ upload_result.analysis.verdict.verdict }}</span>
+                {% endif %}
+            {% else %}
+            <span class="rounded-full bg-slate-200 px-4 py-1 text-sm font-semibold text-slate-700">{{ upload_result.analysis.verdict.status|default:"Unavailable" }}</span>
+            {% endif %}
+        </div>
+
+        {% if upload_result.analysis.verdict.status == "Analyzed" %}
+        <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+            <div>
+                <dt class="font-semibold text-slate-700">Verdict</dt>
+                <dd class="text-slate-700">{{ upload_result.analysis.verdict.verdict }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-slate-700">Confidence</dt>
+                <dd class="text-slate-700">{{ upload_result.analysis.verdict.confidence|default:"Low" }}</dd>
+            </div>
+        </dl>
+        <div class="mt-4">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Reasoning</h3>
+            <p class="mt-2 text-sm leading-6 text-slate-700">{{ upload_result.analysis.verdict.reasoning|default:"Not available." }}</p>
+        </div>
+        {% if upload_result.analysis.verdict.rule_basis %}
+        <div class="mt-4">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Rule basis</h3>
+            <p class="mt-2 text-sm text-slate-700">{{ upload_result.analysis.verdict.rule_basis }}</p>
+        </div>
+        {% endif %}
+        {% if upload_result.analysis.verdict.relevant_rules_used %}
+        <div class="mt-4">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Rules cited by Agent 2</h3>
+            <ul class="mt-2 space-y-2 text-sm text-slate-700">
+                {% for rule in upload_result.analysis.verdict.relevant_rules_used %}
+                <li>
+                    <span class="font-semibold">{% if rule.section %}{{ rule.section }}{% else %}{{ rule.rule_id }}{% endif %}</span>
+                    {% if rule.issue_id %}<span class="text-slate-500">({{ rule.issue_id }})</span>{% endif %}
+                    {% if rule.why_relevant %}<p class="mt-1 leading-6">{{ rule.why_relevant }}</p>{% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% if upload_result.analysis.verdict.matched_rules %}
+        <div class="mt-4">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Matched rulebook passages</h3>
+            <ul class="mt-2 space-y-2 text-sm text-slate-700">
+                {% for rule in upload_result.analysis.verdict.matched_rules %}
+                <li>
+                    <span class="font-semibold">{% if rule.section %}{{ rule.section }}{% else %}{{ rule.rule_id }}{% endif %}</span>
+                    <span class="text-slate-500">(score {{ rule.score|floatformat:3 }})</span>
+                    {% if rule.text %}<p class="mt-1 leading-6">{{ rule.text }}</p>{% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% if upload_result.analysis.verdict.matched_rules_by_issue %}
+        <div class="mt-4">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Matched rules by issue</h3>
+            <div class="mt-2 space-y-3 text-sm text-slate-700">
+                {% for issue_id, rules in upload_result.analysis.verdict.matched_rules_by_issue.items %}
+                {% if rules %}
+                <div>
+                    <p class="font-semibold">{{ issue_id }}</p>
+                    <ul class="mt-1 space-y-1">
+                        {% for rule in rules %}
+                        <li>
+                            {% if rule.section %}{{ rule.section }}{% else %}{{ rule.rule_id }}{% endif %}
+                            <span class="text-slate-500">(score {{ rule.score|floatformat:3 }})</span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        {% if upload_result.analysis.verdict.key_factors %}
+        <div class="mt-4">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Key factors</h3>
+            <ul class="mt-2 space-y-2 text-sm text-slate-700">
+                {% for factor in upload_result.analysis.verdict.key_factors %}
+                <li>{{ factor.frame_id }} at {{ factor.timestamp }} - {{ factor.factor }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% if upload_result.analysis.verdict.issue_analysis %}
+        <div class="mt-4">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Issue analysis</h3>
+            <ul class="mt-2 space-y-2 text-sm text-slate-700">
+                {% for issue in upload_result.analysis.verdict.issue_analysis %}
+                <li>
+                    <span class="font-semibold">{{ issue.issue_id }} / {{ issue.issue_type }}</span>
+                    ({{ issue.confidence }}): {{ issue.finding }}
+                    {% if issue.relevant_frames %}<span class="text-slate-500">Frames: {{ issue.relevant_frames|join:", " }}</span>{% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% if upload_result.analysis.verdict.correct_ruling_if_any %}
+        <div class="mt-4">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Suggested ruling</h3>
+            <p class="mt-2 text-sm text-slate-700">{{ upload_result.analysis.verdict.correct_ruling_if_any }}</p>
+        </div>
+        {% endif %}
+        {% if upload_result.analysis.verdict.limitations %}
+        <div class="mt-4">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Verdict limitations</h3>
+            <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+                {% for item in upload_result.analysis.verdict.limitations %}
+                <li>{{ item }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% elif upload_result.analysis.verdict.status == "Skipped" %}
+        <p class="mt-4 text-sm text-slate-600">
+            Verdict skipped: {{ upload_result.analysis.verdict.skipped_reason|default:"preconditions not met." }}
+        </p>
+        {% else %}
+        <p class="mt-4 text-sm text-slate-600">
+            Verdict unavailable. {{ upload_result.analysis.verdict.error|default:"" }}
+        </p>
+        {% endif %}
+    </div>
+    {% endif %}
 
     <div class="mt-6 rounded-xl border border-slate-200 p-5">
         <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-600">Visual Analyst Report</h2>
@@ -171,6 +307,76 @@
             </p>
         </div>
     </div>
+
+    {% if upload_result.analysis.primary_event or upload_result.analysis.all_events_detected or upload_result.analysis.possible_high_contact or upload_result.analysis.contact_points or upload_result.analysis.issue_cards %}
+    <div class="mt-6 rounded-xl border border-slate-200 p-5">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-600">Issue framing</h2>
+            {% if upload_result.analysis.primary_event %}
+            <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                Primary event: {{ upload_result.analysis.primary_event.tier|default:"Tier D" }}
+            </span>
+            {% endif %}
+            {% if upload_result.analysis.possible_high_contact %}
+            <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
+                Possible high contact: {{ upload_result.analysis.high_contact_confidence|default:"Low" }}
+            </span>
+            {% endif %}
+        </div>
+        {% if upload_result.analysis.primary_event %}
+        <div class="mt-3 text-sm text-slate-700">
+            <p class="font-semibold">Primary event at {{ upload_result.analysis.primary_event.timestamp|default:"unknown time" }}</p>
+            <p class="mt-1">{{ upload_result.analysis.primary_event.description }}</p>
+            {% if upload_result.analysis.primary_event.why_this_is_primary %}
+            <p class="mt-1 text-slate-600">{{ upload_result.analysis.primary_event.why_this_is_primary }}</p>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% if upload_result.analysis.all_events_detected %}
+        <div class="mt-4">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">All events detected</h3>
+            <ul class="mt-2 space-y-2 text-sm text-slate-700">
+                {% for event in upload_result.analysis.all_events_detected %}
+                <li>
+                    <span class="font-semibold">{{ event.tier }}</span>
+                    at {{ event.timestamp|default:"unknown time" }}: {{ event.brief_description }}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% if upload_result.analysis.high_contact_description %}
+        <p class="mt-3 text-sm text-slate-700">{{ upload_result.analysis.high_contact_description }}</p>
+        {% endif %}
+        {% if upload_result.analysis.contact_points %}
+        <div class="mt-4">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Contact points</h3>
+            <ul class="mt-2 space-y-2 text-sm text-slate-700">
+                {% for contact in upload_result.analysis.contact_points %}
+                <li>
+                    {{ contact.frame_id }} at {{ contact.timestamp }} -
+                    {{ contact.contact_type }} toward {{ contact.target_body_area }}
+                    ({{ contact.confidence }}): {{ contact.description }}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% if upload_result.analysis.issue_cards %}
+        <div class="mt-4">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Issue cards</h3>
+            <ul class="mt-2 space-y-2 text-sm text-slate-700">
+                {% for issue in upload_result.analysis.issue_cards %}
+                <li>
+                    <span class="font-semibold">{{ issue.issue_id }} / {{ issue.issue_type }}</span>
+                    ({{ issue.confidence }}): {{ issue.description }}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
 
     {% if upload_result.analysis.video_summary %}
     <div class="mt-6 rounded-xl border border-slate-200 p-5">
@@ -263,6 +469,34 @@
                 <dd class="text-slate-700">{{ upload_result.analysis.debug.candidates_scanned_count }}</dd>
             </div>
             <div>
+                <dt class="font-semibold text-slate-600">Real video frames</dt>
+                <dd class="text-slate-700">{{ upload_result.analysis.debug.real_video_frame_count|default:"0" }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-slate-600">Low-rate candidates</dt>
+                <dd class="text-slate-700">{{ upload_result.analysis.debug.low_rate_candidates_count|default:"0" }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-slate-600">Dense candidates</dt>
+                <dd class="text-slate-700">{{ upload_result.analysis.debug.dense_candidates_count|default:"0" }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-slate-600">Merged local candidates</dt>
+                <dd class="text-slate-700">{{ upload_result.analysis.debug.merged_candidates_count|default:"0" }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-slate-600">Scan / dense FPS</dt>
+                <dd class="text-slate-700">{{ upload_result.analysis.debug.scan_fps_used|default:"-" }} / {{ upload_result.analysis.debug.dense_fps_used|default:"-" }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-slate-600">Dense window seconds</dt>
+                <dd class="text-slate-700">{{ upload_result.analysis.debug.dense_window_seconds|default:"-" }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-slate-600">Chaotic play suspected</dt>
+                <dd class="text-slate-700">{{ upload_result.analysis.debug.chaotic_play_suspected|default:"False" }}</dd>
+            </div>
+            <div>
                 <dt class="font-semibold text-slate-600">Frames sent to Gemini</dt>
                 <dd class="text-slate-700">{{ upload_result.analysis.debug.frames_sent_to_gemini_count }}</dd>
             </div>
@@ -294,6 +528,16 @@
             <ul class="mt-2 space-y-1 text-xs text-slate-700">
                 {% for candidate in upload_result.analysis.debug.scoring_top_candidates %}
                 <li>{{ candidate.timestamp }} - {{ candidate.reason }} (score {{ candidate.score }})</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% if upload_result.analysis.debug.motion_peaks_selected %}
+        <div class="mt-4">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Top motion peaks</h3>
+            <ul class="mt-2 space-y-1 text-xs text-slate-700">
+                {% for peak in upload_result.analysis.debug.motion_peaks_selected %}
+                <li>{{ peak.timestamp }} - group {{ peak.group_id }} (motion {{ peak.motion }}, score {{ peak.score }})</li>
                 {% endfor %}
             </ul>
         </div>
