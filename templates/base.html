@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}RefCheck AI{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-slate-50 text-slate-900">
+    <div class="flex min-h-screen flex-col">
+        <header class="border-b border-slate-200 bg-white">
+            <nav class="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-4">
+                <a href="{% url 'home' %}" class="text-lg font-semibold tracking-tight">RefCheck AI</a>
+                <ul class="flex items-center gap-6 text-sm font-medium text-slate-700">
+                    <li><a href="{% url 'home' %}" class="hover:text-slate-900">Home</a></li>
+                    <li><a href="{% url 'analyze' %}" class="hover:text-slate-900">Analyze</a></li>
+                    <li><a href="{% url 'about' %}" class="hover:text-slate-900">About</a></li>
+                </ul>
+            </nav>
+        </header>
+
+        <main class="mx-auto w-full max-w-5xl flex-1 px-6 py-12">
+            {% block content %}{% endblock %}
+        </main>
+
+        <footer class="border-t border-slate-200 bg-white">
+            <div class="mx-auto w-full max-w-5xl px-6 py-4 text-sm text-slate-600">
+                RefCheck AI MVP
+            </div>
+        </footer>
+    </div>
+</body>
+</html>

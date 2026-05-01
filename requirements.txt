@@ -1,0 +1,4 @@
+Django==6.0.3
+python-dotenv==1.2.2
+google-genai==1.16.1
+opencv-python-headless==4.11.0.86
