@@ -92,30 +92,42 @@
     <div class="mt-6 rounded-xl border border-slate-200 p-5">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-600">Evidence Quality</h2>
-            {% if upload_result.analysis.evidence_quality == "Good" %}
-            <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">{{ upload_result.analysis.evidence_quality }}</span>
-            {% elif upload_result.analysis.evidence_quality == "Limited" %}
-            <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">{{ upload_result.analysis.evidence_quality }}</span>
+            {% if upload_result.analysis.visual_frame_quality == "Good" %}
+            <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">{{ upload_result.analysis.visual_frame_quality }}</span>
+            {% elif upload_result.analysis.visual_frame_quality == "Limited" %}
+            <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">{{ upload_result.analysis.visual_frame_quality }}</span>
             {% else %}
-            <span class="rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-800">{{ upload_result.analysis.evidence_quality }}</span>
+            <span class="rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-800">{{ upload_result.analysis.visual_frame_quality|default:"Poor" }}</span>
             {% endif %}
         </div>
         <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-2">
             <div>
+                <dt class="font-semibold text-slate-700">Visual frame quality</dt>
+                <dd class="text-slate-700">{{ upload_result.analysis.visual_frame_quality|default:"Poor" }}</dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-slate-700">Verdict readiness</dt>
+                <dd class="text-slate-700">{{ upload_result.analysis.verdict_readiness|default:"Not Ready" }}</dd>
+            </div>
+            <div>
                 <dt class="font-semibold text-slate-700">Can reason about call</dt>
                 <dd class="text-slate-700">{% if upload_result.analysis.can_reason_about_call %}Yes{% else %}No{% endif %}</dd>
             </div>
+            <div>
+                <dt class="font-semibold text-slate-700">Possible replay duplicate</dt>
+                <dd class="text-slate-700">{% if upload_result.analysis.possible_replay_duplicate %}Yes{% else %}No{% endif %}</dd>
+            </div>
         </dl>
         <div class="mt-4">
-            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Officiating issue summary</h3>
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Sequence interpretation</h3>
             <p class="mt-2 text-sm text-slate-700">
-                {{ upload_result.analysis.officiating_issue_summary|default:"Not available." }}
+                {{ upload_result.analysis.sequence_interpretation|default:"unclear" }} - {{ upload_result.analysis.sequence_interpretation_reason|default:"Not available." }}
             </p>
         </div>
         <div class="mt-4">
-            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Referee signal interpretation</h3>
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Visual sequence summary for review</h3>
             <p class="mt-2 text-sm text-slate-700">
-                {{ upload_result.analysis.referee_signal_interpretation|default:"Not available." }}
+                {{ upload_result.analysis.officiating_issue_summary|default:"Not available." }}
             </p>
         </div>
         <div class="mt-4">
@@ -144,6 +156,14 @@
                 <dd class="text-slate-700">{{ upload_result.analysis.visible_call_type|default:"unclear" }}</dd>
             </div>
         </dl>
+        <div class="mt-4">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Possible call types</h3>
+            {% if upload_result.analysis.possible_call_types %}
+            <p class="mt-2 text-sm text-slate-700">{{ upload_result.analysis.possible_call_types|join:", " }}</p>
+            {% else %}
+            <p class="mt-2 text-sm text-slate-600">No possible call types were returned.</p>
+            {% endif %}
+        </div>
         <div class="mt-4">
             <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Visible call type reason</h3>
             <p class="mt-2 text-sm text-slate-700">

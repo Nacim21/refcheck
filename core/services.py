@@ -41,6 +41,36 @@ def _normalize_evidence_quality(value: str) -> str:
     return "Poor"
 
 
+def _normalize_verdict_readiness(value: str) -> str:
+    candidate = (value or "").strip().title()
+    if candidate in {"Ready", "Limited", "Not Ready"}:
+        return candidate
+    if candidate == "Not ready":
+        return "Not Ready"
+    return "Not Ready"
+
+
+def _normalize_sequence_interpretation(value: str) -> str:
+    allowed = {"single_play", "multiple_plays", "possible_replay", "unclear"}
+    candidate = (value or "").strip().lower()
+    return candidate if candidate in allowed else "unclear"
+
+
+def _normalize_possible_call_type(value: str) -> str | None:
+    allowed = {
+        "blocking/charging",
+        "personal foul",
+        "traveling",
+        "goaltending",
+        "shooting foul",
+        "out of bounds",
+        "no-call",
+        "unclear",
+    }
+    candidate = (value or "").strip().lower()
+    return candidate if candidate in allowed else None
+
+
 def _normalize_why_relevant(value: str) -> str:
     allowed = {
         "possible contact",
@@ -52,6 +82,21 @@ def _normalize_why_relevant(value: str) -> str:
     }
     candidate = (value or "").strip().lower()
     return candidate if candidate in allowed else "other"
+
+
+def _complete_sentence(value: str, max_len: int = 500) -> str:
+    text = " ".join((value or "").strip().split())
+    if not text:
+        return ""
+    if len(text) > max_len:
+        boundary = max(text.rfind(".", 0, max_len), text.rfind("!", 0, max_len), text.rfind("?", 0, max_len))
+        if boundary >= max_len * 0.45:
+            text = text[: boundary + 1]
+        else:
+            text = text[:max_len].rstrip()
+    if text[-1] not in ".!?":
+        text += "."
+    return text
 
 
 def _strip_code_fences(text: str) -> str:
@@ -310,14 +355,16 @@ def _default_recommended_frames(evidence_frames: list[dict]) -> list[dict]:
         {
             "frame_id": frame["frame_id"],
             "timestamp": frame["timestamp"],
-            "reason": frame.get("selection_reason", "selected for temporal coverage"),
+            "reason": _complete_sentence(
+                f"Clear visual frame: {frame.get('selection_reason', 'selected for temporal coverage')}"
+            ),
         }
         for frame in top
     ]
 
 
 def analyze_video_with_gemini(video_path: str, original_call: str | None = None) -> dict:
-    model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
     result = {
         "agent": "visual_analyst",
         "success": False,
@@ -334,10 +381,16 @@ def analyze_video_with_gemini(video_path: str, original_call: str | None = None)
         "video_summary": "",
         "key_events": [],
         "possible_critical_moments": [],
+        "sequence_interpretation": "unclear",
+        "possible_replay_duplicate": False,
+        "sequence_interpretation_reason": "",
         "visible_call_type": "unclear",
         "visible_call_type_reason": "",
+        "possible_call_types": [],
         "officiating_issue_summary": "",
         "evidence_quality": "Poor",
+        "visual_frame_quality": "Poor",
+        "verdict_readiness": "Not Ready",
         "can_reason_about_call": False,
         "missing_evidence": [],
         "limitations": [],
@@ -526,35 +579,58 @@ def analyze_video_with_gemini(video_path: str, original_call: str | None = None)
             "No model-generated visual analyst interpretation was produced.",
             "Before/contact/after continuity cannot be assessed without model output.",
         ]
-        result["officiating_issue_summary"] = "Evidence is insufficient because visual analysis output is missing."
-        result["visible_call_type_reason"] = "Unable to determine visible call type without model output."
+        result["officiating_issue_summary"] = "No neutral visual sequence summary is available."
+        result["visible_call_type_reason"] = "Agent 1 does not classify the call without directly visible evidence."
+        result["sequence_interpretation_reason"] = "No model output was available to distinguish a single play from a replay or separate play."
         _clean_for_session(result)
         return result
 
     prompt_lines = [
-        "You are Agent 1: Visual Analyst for sports officiating review.",
-        "You are NOT the referee judge.",
+        "You are Agent 1: Visual Analyst.",
+        "Your only job is to describe exactly what is visible in selected video frames.",
+        "You are not a referee, not a rules analyst, and not the final decision maker.",
         "You only see selected frames, not the full continuous video.",
+        "Describe players, ball, body positions, location on court/field, visible contact, falls, jumps, releases, and sequence between frames.",
+        "Use neutral visual language. Do not label actions as legal, illegal, correct, incorrect, foul, violation, or no-call unless such wording is visibly shown in the image itself.",
         "Do not decide Fair Call or Bad Call.",
         "Do not say whether the official was correct or incorrect.",
         "Do not cite official rules and do not apply rulebook reasoning.",
-        "Do not infer motion, contact, intent, or timing unless directly supported by selected frames.",
-        "Distinguish visible game events from officiating-relevant evidence.",
-        "If evidence is insufficient, be explicit and set can_reason_about_call to false.",
-        "If visible call type is unclear, set visible_call_type to 'unclear'.",
-        "Recommend which frames should be reviewed by a later Verdict Agent.",
+        "Do not infer intent, cause, exact timing, or what happened between frames unless directly supported by the selected frames.",
+        "If contact is visible, describe only the visible body positions and contact appearance; do not decide responsibility.",
+        "Distinguish between a separate incident and the same incident shown again as a broadcast replay or different camera angle.",
+        "If the same players/actions appear repeated from a different camera angle, set sequence_interpretation to 'possible_replay' and possible_replay_duplicate to true unless there is clear evidence of a separate play.",
+        "Do not describe replay-like sequences as separate incidents unless there is clear visual evidence they are separate plays.",
+        "Do not infer visible_call_type from player actions.",
+        "Set visible_call_type to 'unclear' unless the call type is explicitly visible in text/overlay or provided by the user as the original call.",
+        "If visible_call_type uses the user-provided original call, visible_call_type_reason must say it is user-provided and not a visual/rules conclusion.",
+        "visible_call_type_reason must explain the visible basis or state that Agent 1 is not making a call classification.",
+        "possible_call_types may list visual categories that a later Verdict Agent might consider, but this is not a final decision.",
+        "officiating_issue_summary must be a neutral visual summary of what a future Verdict Agent may need to examine, not a rules conclusion.",
+        "visual_frame_quality rates image clarity and usefulness only.",
+        "verdict_readiness rates whether a future Verdict Agent has enough visual continuity.",
+        "can_reason_about_call means whether selected frames contain enough visual continuity for a later Verdict Agent to reason; it does not mean you are deciding the call.",
+        "Set can_reason_about_call to false if defender feet are not clearly visible before contact, restricted area/boundary context is unclear, exact moment of contact is not continuous, referee signal or original call is not visible/provided, or the play may be a replay duplicate.",
+        "If can_reason_about_call is false, missing_evidence must say exactly what is missing.",
+        "Every key_events[].description must be a complete sentence.",
+        "Every possible_critical_moments[].description must be a complete sentence.",
+        "Recommend frames for a later Verdict Agent based only on visual clarity, sequence relevance, and whether they show before/during/after positions.",
         "Return valid JSON only with this schema:",
         "{",
         '  "agent": "visual_analyst",',
         '  "video_summary": "string",',
         '  "key_events": [{"timestamp": "M:SS.ss", "frame_id": "frame_00x", "description": "string"}],',
+        '  "sequence_interpretation": "single_play|multiple_plays|possible_replay|unclear",',
+        '  "possible_replay_duplicate": false,',
+        '  "sequence_interpretation_reason": "string",',
         '  "possible_critical_moments": [',
         '    {"timestamp": "M:SS.ss", "frame_id": "frame_00x", "description": "string", "why_relevant": "possible contact|defender position|ball release|referee signal|boundary|other"}',
         "  ],",
         '  "visible_call_type": "blocking/charging|traveling|goaltending|shooting foul|personal foul|out of bounds|no-call|unclear",',
         '  "visible_call_type_reason": "string",',
+        '  "possible_call_types": ["blocking/charging", "personal foul"],',
         '  "officiating_issue_summary": "string",',
-        '  "evidence_quality": "Good|Limited|Poor",',
+        '  "visual_frame_quality": "Good|Limited|Poor",',
+        '  "verdict_readiness": "Ready|Limited|Not ready",',
         '  "can_reason_about_call": true,',
         '  "missing_evidence": ["string"],',
         '  "limitations": ["string"],',
@@ -598,8 +674,9 @@ def analyze_video_with_gemini(video_path: str, original_call: str | None = None)
                 "No visual analyst sequence interpretation was returned.",
                 "Unable to assess whether evidence supports later verdict reasoning.",
             ]
-            result["officiating_issue_summary"] = "No officiating-focused visual interpretation was returned."
+            result["officiating_issue_summary"] = "No neutral visual sequence summary was returned."
             result["visible_call_type_reason"] = "No model output available."
+            result["sequence_interpretation_reason"] = "No model output was available to assess replay or sequence continuity."
             _clean_for_session(result)
             return result
 
@@ -615,8 +692,9 @@ def analyze_video_with_gemini(video_path: str, original_call: str | None = None)
                 "Structured visual analyst fields were not returned in JSON.",
                 "Frame-linked critical moments and recommendations are uncertain.",
             ]
-            result["officiating_issue_summary"] = "Unstructured output; officiating evidence assessment is uncertain."
-            result["visible_call_type_reason"] = "Unstructured model output did not provide reliable call type rationale."
+            result["officiating_issue_summary"] = "Unstructured output; visual sequence assessment is uncertain."
+            result["visible_call_type_reason"] = "Unstructured model output did not provide a reliable visual basis."
+            result["sequence_interpretation_reason"] = "Unstructured output did not provide a reliable sequence interpretation."
             result["error"] = "AI returned unstructured text."
             _clean_for_session(result)
             return result
@@ -629,6 +707,7 @@ def analyze_video_with_gemini(video_path: str, original_call: str | None = None)
         critical_payload = payload.get("possible_critical_moments") or []
         missing_evidence = payload.get("missing_evidence") or []
         recommended_payload = payload.get("recommended_frames_for_verdict_agent") or []
+        possible_call_types_payload = payload.get("possible_call_types") or []
 
         frame_id_map = {frame["frame_id"]: frame for frame in evidence_frames}
 
@@ -638,7 +717,7 @@ def analyze_video_with_gemini(video_path: str, original_call: str | None = None)
                 continue
             timestamp = str(event.get("timestamp", "")).strip()
             frame_id = str(event.get("frame_id", "")).strip()
-            description = str(event.get("description", "")).strip()
+            description = _complete_sentence(str(event.get("description", "")).strip())
             if not description:
                 continue
             if frame_id not in frame_id_map:
@@ -646,7 +725,7 @@ def analyze_video_with_gemini(video_path: str, original_call: str | None = None)
             if not timestamp:
                 timestamp = frame_id_map.get(frame_id, {}).get("timestamp", "")
             normalized_events.append(
-                {"timestamp": timestamp[:20], "frame_id": frame_id, "description": description[:220]}
+                {"timestamp": timestamp[:20], "frame_id": frame_id, "description": description}
             )
 
         normalized_limitations = [str(item).strip()[:220] for item in limitations[:6] if str(item).strip()]
@@ -658,7 +737,7 @@ def analyze_video_with_gemini(video_path: str, original_call: str | None = None)
                 continue
             timestamp = str(item.get("timestamp", "")).strip()
             frame_id = str(item.get("frame_id", "")).strip()
-            description = str(item.get("description", "")).strip()
+            description = _complete_sentence(str(item.get("description", "")).strip())
             why = _normalize_why_relevant(item.get("why_relevant", "other"))
             if not description:
                 continue
@@ -670,7 +749,7 @@ def analyze_video_with_gemini(video_path: str, original_call: str | None = None)
                 {
                     "timestamp": timestamp[:20],
                     "frame_id": frame_id,
-                    "description": description[:220],
+                    "description": description,
                     "why_relevant": why,
                 }
             )
@@ -696,12 +775,44 @@ def analyze_video_with_gemini(video_path: str, original_call: str | None = None)
         result["video_summary"] = str(payload.get("video_summary", "")).strip()[:900]
         result["key_events"] = normalized_events
         result["possible_critical_moments"] = normalized_critical if normalized_critical else result["possible_critical_moments"]
+        result["sequence_interpretation"] = _normalize_sequence_interpretation(
+            payload.get("sequence_interpretation", "")
+        )
+        result["possible_replay_duplicate"] = bool(payload.get("possible_replay_duplicate", False))
+        result["sequence_interpretation_reason"] = str(
+            payload.get("sequence_interpretation_reason", "")
+        ).strip()[:500]
         result["visible_call_type"] = _normalize_call_type(payload.get("visible_call_type", ""))
         result["visible_call_type_reason"] = str(payload.get("visible_call_type_reason", "")).strip()[:500]
+        normalized_possible_call_types = []
+        for call_type in possible_call_types_payload[:6]:
+            normalized_call_type = _normalize_possible_call_type(str(call_type))
+            if normalized_call_type and normalized_call_type not in normalized_possible_call_types:
+                normalized_possible_call_types.append(normalized_call_type)
+        result["possible_call_types"] = normalized_possible_call_types
         result["officiating_issue_summary"] = str(payload.get("officiating_issue_summary", "")).strip()[:500]
-        result["evidence_quality"] = _normalize_evidence_quality(payload.get("evidence_quality", ""))
-        result["can_reason_about_call"] = bool(payload.get("can_reason_about_call", False))
+        result["visual_frame_quality"] = _normalize_evidence_quality(
+            payload.get("visual_frame_quality", payload.get("evidence_quality", ""))
+        )
+        result["evidence_quality"] = result["visual_frame_quality"]
+        result["verdict_readiness"] = _normalize_verdict_readiness(payload.get("verdict_readiness", ""))
+        requested_can_reason = bool(payload.get("can_reason_about_call", False))
+        result["can_reason_about_call"] = (
+            requested_can_reason
+            and result["verdict_readiness"] == "Ready"
+            and not result["possible_replay_duplicate"]
+            and result["sequence_interpretation"] != "possible_replay"
+        )
         result["missing_evidence"] = normalized_missing
+        if requested_can_reason and not result["can_reason_about_call"]:
+            if result["possible_replay_duplicate"] or result["sequence_interpretation"] == "possible_replay":
+                result["missing_evidence"].append(
+                    "The sequence may be a replay duplicate, so later verdict reasoning should not treat it as a continuous single incident."
+                )
+            if result["verdict_readiness"] != "Ready":
+                result["missing_evidence"].append(
+                    "Verdict readiness is not marked Ready because the selected frames do not provide enough continuous visual context."
+                )
         result["limitations"] = normalized_limitations
         result["recommended_frames_for_verdict_agent"] = (
             normalized_recommended if normalized_recommended else _default_recommended_frames(evidence_frames)
@@ -723,8 +834,8 @@ def analyze_video_with_gemini(video_path: str, original_call: str | None = None)
                 "No usable visual analyst summary was returned.",
                 "Unable to confirm continuity around potential call moment.",
             ]
-            result["officiating_issue_summary"] = "Insufficient summary for later verdict reasoning."
-            result["visible_call_type_reason"] = "No reliable call-type rationale returned."
+            result["officiating_issue_summary"] = "Insufficient visual summary for later verdict reasoning."
+            result["visible_call_type_reason"] = "No reliable visual basis returned."
             _clean_for_session(result)
             return result
 
@@ -745,8 +856,8 @@ def analyze_video_with_gemini(video_path: str, original_call: str | None = None)
             "Frame-linked event fields could not be parsed.",
             "Evidence sufficiency judgement remains uncertain.",
         ]
-        result["officiating_issue_summary"] = "JSON parsing failed; visual analyst assessment is incomplete."
-        result["visible_call_type_reason"] = "Parsing failure prevented reliable call-type rationale extraction."
+        result["officiating_issue_summary"] = "JSON parsing failed; visual description is incomplete."
+        result["visible_call_type_reason"] = "Parsing failure prevented reliable visual-basis extraction."
         result["debug"]["error_type"] = result["error_type"]
         result["debug"]["error_message"] = str(exc)[:300]
         _clean_for_session(result)
@@ -760,7 +871,7 @@ def analyze_video_with_gemini(video_path: str, original_call: str | None = None)
             "Cannot determine if evidence is sufficient for a later verdict agent.",
         ]
         result["officiating_issue_summary"] = "Gemini request failed; visual analyst stage not completed."
-        result["visible_call_type_reason"] = "No call-type rationale available due to API failure."
+        result["visible_call_type_reason"] = "No visual basis available due to API failure."
         result["debug"]["error_type"] = result["error_type"]
         result["debug"]["error_message"] = str(exc)[:300]
         _clean_for_session(result)
