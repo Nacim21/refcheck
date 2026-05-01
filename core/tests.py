@@ -4,7 +4,7 @@ from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 from unittest.mock import patch
 
-from . import services
+from . import services, views
 
 
 class GcsUploadFlowTests(TestCase):
@@ -64,6 +64,19 @@ class GcsUploadFlowTests(TestCase):
         upload_result = self.client.session["upload_result"]
         self.assertEqual(upload_result["filename"], "uploads/test.mp4")
         self.assertEqual(upload_result["video_url"], "https://storage.example/read")
+
+
+class GcsCredentialsConfigTests(SimpleTestCase):
+    def test_service_account_json_env_is_supported_for_vercel(self):
+        service_account = {"type": "service_account", "project_id": "refcheck-test"}
+
+        with patch.dict("os.environ", {"GOOGLE_APPLICATION_CREDENTIALS_JSON": json.dumps(service_account)}, clear=False):
+            self.assertEqual(views._gcp_credentials_info(), service_account)
+
+    def test_invalid_service_account_json_env_raises_clear_error(self):
+        with patch.dict("os.environ", {"GOOGLE_APPLICATION_CREDENTIALS_JSON": "not-json"}, clear=False):
+            with self.assertRaisesRegex(RuntimeError, "not valid JSON"):
+                views._gcp_credentials_info()
 
 
 class VisualSeverityTriageTests(SimpleTestCase):

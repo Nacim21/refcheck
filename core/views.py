@@ -112,6 +112,20 @@ def _gcs_bucket_name() -> str:
     return os.getenv("GCP_STORAGE_BUCKET_NAME", "").strip()
 
 
+def _gcp_credentials_info() -> dict | None:
+    raw_credentials = (
+        os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+        or os.getenv("GCP_SERVICE_ACCOUNT_JSON")
+        or ""
+    ).strip()
+    if not raw_credentials:
+        return None
+    try:
+        return json.loads(raw_credentials)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("GOOGLE_APPLICATION_CREDENTIALS_JSON is not valid JSON.") from exc
+
+
 def _get_gcs_bucket():
     bucket_name = _gcs_bucket_name()
     if not bucket_name:
@@ -120,6 +134,9 @@ def _get_gcs_bucket():
         from google.cloud import storage
     except ImportError as exc:
         raise RuntimeError("google-cloud-storage is not installed.") from exc
+    credentials_info = _gcp_credentials_info()
+    if credentials_info:
+        return storage.Client.from_service_account_info(credentials_info).bucket(bucket_name)
     return storage.Client().bucket(bucket_name)
 
 
