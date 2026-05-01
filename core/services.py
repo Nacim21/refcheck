@@ -73,10 +73,6 @@ def _refcheck_max_candidate_frames() -> int:
     return _env_int("REFCHECK_MAX_CANDIDATE_FRAMES", default=80, minimum=20, maximum=240)
 
 
-def _refcheck_replay_context_enabled() -> bool:
-    return _env_flag("REFCHECK_REPLAY_CONTEXT_ENABLED", True)
-
-
 def _gemini_visual_model() -> str:
     return os.getenv("GEMINI_VISUAL_MODEL", "gemini-2.5-flash-lite").strip() or "gemini-2.5-flash-lite"
 
@@ -250,7 +246,7 @@ def _normalize_verdict_readiness(value: str) -> str:
 
 
 def _normalize_sequence_interpretation(value: str) -> str:
-    allowed = {"single_play", "multiple_plays", "possible_replay", "unclear", "uncertain_continuity"}
+    allowed = {"single_play", "multiple_plays", "unclear", "uncertain_continuity"}
     candidate = (value or "").strip().lower()
     return candidate if candidate in allowed else "unclear"
 
@@ -362,26 +358,6 @@ def _normalize_contact_direction(payload: dict) -> dict:
         "contact_confidence": _normalize_role_confidence(payload.get("contact_confidence", "low"), default="low"),
     }
     return {key: value for key, value in cleaned.items() if value}
-
-
-def _has_strong_replay_discontinuity(*texts: str) -> bool:
-    combined = " ".join(str(text or "") for text in texts).lower()
-    strong_markers = [
-        "scoreboard reset",
-        "clock reset",
-        "clock jumps backward",
-        "jumped backward",
-        "broadcast replay",
-        "replay graphic",
-        "graphic wipe",
-        "hard camera cut",
-        "same action repeats non-continuously",
-        "positions repeat non-continuously",
-        "discontinuous sequence",
-        "non-continuous sequence",
-        "non continuous sequence",
-    ]
-    return any(marker in combined for marker in strong_markers)
 
 
 def _normalize_event_tier(value: str) -> str:
@@ -505,22 +481,57 @@ def _uniform_fallback_indices(total_frames: int, desired: int = 8) -> list[int]:
     return deduped
 
 
+def _dedupe_sorted_indices(indices: list[int], total_frames: int) -> list[int]:
+    if total_frames <= 0:
+        return []
+    seen = set()
+    deduped = []
+    for idx in indices:
+        bounded = max(0, min(total_frames - 1, int(idx)))
+        if bounded in seen:
+            continue
+        seen.add(bounded)
+        deduped.append(bounded)
+    return sorted(deduped)
+
+
+def _fractional_frame_indices(total_frames: int, fractions: list[float]) -> list[int]:
+    if total_frames <= 0:
+        return []
+    return [
+        int(round((total_frames - 1) * max(0.0, min(1.0, fraction))))
+        for fraction in fractions
+    ]
+
+
 def _candidate_indices(total_frames: int, fps: float, duration: float) -> list[int]:
+    if total_frames <= 0:
+        return []
     scan_fps = _refcheck_scan_fps() if duration <= 20 else min(_refcheck_scan_fps(), 2.0)
     step = max(1, int(round(fps / scan_fps))) if fps > 0 else 1
-    start_frame = int(round((total_frames - 1) * 0.05))
-    end_frame = int(round((total_frames - 1) * 0.95))
-    indices = list(range(start_frame, max(start_frame + 1, end_frame + 1), step))
-    if not indices:
-        indices = [max(0, total_frames // 2)]
+    indices = list(range(0, total_frames, step))
+    indices.extend(
+        _fractional_frame_indices(
+            total_frames,
+            [0.0, 0.03, 0.08, 0.15, 0.25, 0.375, 0.50, 0.625, 0.75, 0.85, 0.92, 0.97, 1.0],
+        )
+    )
     max_candidates = _refcheck_max_candidate_frames()
+    indices = _dedupe_sorted_indices(indices, total_frames)
     if len(indices) > max_candidates:
+        protected = set(
+            _fractional_frame_indices(total_frames, [0.0, 0.03, 0.08, 0.50, 0.92, 0.97, 1.0])
+        )
+        remaining_budget = max(0, max_candidates - len(protected))
         sampled = []
-        for i in range(max_candidates):
-            pos = int(round(i * (len(indices) - 1) / (max_candidates - 1)))
-            sampled.append(indices[pos])
-        indices = sampled
-    return sorted(set(indices))
+        if remaining_budget > 0:
+            for i in range(remaining_budget):
+                pos = int(round(i * (len(indices) - 1) / max(1, remaining_budget - 1)))
+                sampled.append(indices[pos])
+        indices = _dedupe_sorted_indices([*protected, *sampled], total_frames)
+        if len(indices) > max_candidates:
+            indices = indices[:max_candidates]
+    return indices
 
 
 def _collect_candidates(capture, indices: list[int], fps: float):
@@ -582,14 +593,11 @@ def _collect_candidates(capture, indices: list[int], fps: float):
         if prev_hist is not None:
             duplicate_similarity = float(cv2.compareHist(hist, prev_hist, cv2.HISTCMP_CORREL))
         duplicate_similarity = max(-1.0, min(1.0, duplicate_similarity))
-        camera_replay_score = duplicate_similarity if duplicate_similarity >= 0.96 and motion <= 0.04 else 0.0
-
         timestamp_seconds = (frame_idx / fps) if fps > 0 else 0.0
         frame_context = {
             "lower_body_cluster_score": lower_body_cluster_score,
             "floor_activity_score": floor_activity_score,
             "player_heap_score": player_heap_score,
-            "camera_replay_score": camera_replay_score,
             "motion_peak_group_id": None,
         }
         candidates.append(
@@ -607,7 +615,6 @@ def _collect_candidates(capture, indices: list[int], fps: float):
                 "lower_body_cluster_score": lower_body_cluster_score,
                 "floor_activity_score": floor_activity_score,
                 "player_heap_score": player_heap_score,
-                "camera_replay_score": camera_replay_score,
                 "frame_context": frame_context,
                 "selection_reason": "selected for temporal coverage",
             }
@@ -616,54 +623,6 @@ def _collect_candidates(capture, indices: list[int], fps: float):
         prev_small_gray = gray
         prev_hist = hist
     return candidates
-
-
-def _dense_indices_around_peaks(
-    candidates: list[dict],
-    total_frames: int,
-    fps: float,
-    window_seconds: float = 1.0,
-    dense_fps: float = 10.0,
-    peak_count: int = 3,
-) -> list[int]:
-    if not candidates or fps <= 0 or total_frames <= 0:
-        return []
-    step = max(1, int(round(fps / dense_fps)))
-    radius = max(1, int(round(window_seconds * fps)))
-    peaks = sorted(candidates, key=lambda item: item.get("motion", 0.0), reverse=True)[:peak_count]
-    indices: set[int] = set()
-    for peak in peaks:
-        center = int(peak.get("frame_idx", 0))
-        start = max(0, center - radius)
-        end = min(total_frames - 1, center + radius)
-        for frame_idx in range(start, end + 1, step):
-            indices.add(frame_idx)
-        indices.add(center)
-    return sorted(indices)
-
-
-def _evenly_spaced_frame_indices(center: int, radius: int, count: int, total_frames: int) -> list[int]:
-    if count <= 0 or total_frames <= 0:
-        return []
-    start = max(0, center - radius)
-    end = min(total_frames - 1, center + radius)
-    if count == 1 or start == end:
-        return [max(0, min(total_frames - 1, center))]
-    indices = []
-    for i in range(count):
-        frame_idx = int(round(start + (i * (end - start) / (count - 1))))
-        indices.append(max(0, min(total_frames - 1, frame_idx)))
-    deduped = []
-    seen = set()
-    for idx in indices:
-        if idx not in seen:
-            seen.add(idx)
-            deduped.append(idx)
-    if center not in seen:
-        deduped.append(max(0, min(total_frames - 1, center)))
-    if len(deduped) > count:
-        deduped = sorted(deduped, key=lambda idx: (abs(idx - center), idx))[:count]
-    return sorted(deduped)
 
 
 def _score_candidates(candidates: list[dict]) -> None:
@@ -685,20 +644,72 @@ def _score_candidates(candidates: list[dict]) -> None:
         duplicate_penalty = max(0.0, float(candidate.get("duplicate_similarity", 0.0)))
         uniqueness = 1.0 - duplicate_penalty
         score = (
-            (0.45 * motion_norm[i])
-            + (0.18 * sharp_norm[i])
-            + (0.17 * relevance_norm[i])
-            + (0.10 * floor_norm[i])
-            + (0.05 * heap_norm[i])
-            + (0.05 * uniqueness)
+            (0.28 * motion_norm[i])
+            + (0.24 * sharp_norm[i])
+            + (0.23 * relevance_norm[i])
+            + (0.12 * floor_norm[i])
+            + (0.06 * heap_norm[i])
+            + (0.07 * uniqueness)
         )
         reason = str(candidate.get("selection_reason", ""))
-        if reason.startswith("dense"):
-            score += 0.08
-        if "replay" in reason or "alternate angle" in reason:
-            score += 0.02
+        if reason in {"clip start context", "clip end context"}:
+            score += 0.04
         candidate["score"] = float(min(1.0, score))
         candidate["motion_norm"] = float(motion_norm[i])
+
+
+def _selection_phase(reason: str) -> str:
+    text = str(reason or "").lower()
+    if "clip start" in text:
+        return "clip_start_context"
+    if "clip end" in text:
+        return "clip_end_context"
+    if "pre-contact" in text or "before contact" in text:
+        return "pre_contact"
+    if any(
+        marker in text
+        for marker in ["likely contact", "high-motion peak", "contact moment", "high contact", "contact point"]
+    ):
+        return "likely_contact"
+    if "post-contact" in text or "after contact" in text:
+        return "post_contact"
+    if "aftermath" in text or "player-on-floor" in text:
+        return "aftermath"
+    return "temporal_coverage"
+
+
+def _tag_boundary_candidate_reasons(candidates: list[dict], total_frames: int) -> None:
+    if not candidates or total_frames <= 0:
+        return
+    start_cutoff = max(0, int(round((total_frames - 1) * 0.08)))
+    end_cutoff = min(total_frames - 1, int(round((total_frames - 1) * 0.92)))
+    first = min(candidates, key=lambda item: int(item.get("frame_idx", 0)))
+    last = max(candidates, key=lambda item: int(item.get("frame_idx", 0)))
+    for candidate in candidates:
+        frame_idx = int(candidate.get("frame_idx", 0))
+        if frame_idx == int(first.get("frame_idx", 0)) or frame_idx <= start_cutoff:
+            candidate["selection_reason"] = "clip start context"
+        elif frame_idx == int(last.get("frame_idx", 0)) or frame_idx >= end_cutoff:
+            candidate["selection_reason"] = "clip end context"
+        elif candidate.get("selection_reason") == "selected for temporal coverage":
+            candidate["selection_reason"] = "temporal coverage"
+        candidate["phase_bucket"] = _selection_phase(candidate.get("selection_reason", ""))
+
+
+def _phase_bucket_counts(candidates: list[dict]) -> dict:
+    counts = {
+        "clip_start_context": 0,
+        "pre_contact": 0,
+        "likely_contact": 0,
+        "post_contact": 0,
+        "aftermath": 0,
+        "clip_end_context": 0,
+        "temporal_coverage": 0,
+    }
+    for candidate in candidates:
+        phase = candidate.get("phase_bucket") or _selection_phase(candidate.get("selection_reason", ""))
+        counts[phase] = counts.get(phase, 0) + 1
+    return counts
 
 
 def _rank_motion_peaks(
@@ -738,91 +749,6 @@ def _rank_motion_peaks(
         if len(accepted) >= max_peaks:
             break
     return accepted
-
-
-def _adaptive_indices_around_motion_peaks(
-    candidates: list[dict],
-    total_frames: int,
-    fps: float,
-    total_budget: int = 12,
-    primary_ratio: float = 0.75,
-    primary_window_seconds: float = 0.8,
-    secondary_threshold_ratio: float = 0.50,
-    max_secondary_frames_per_peak: int = 2,
-) -> tuple[list[int], dict]:
-    if not candidates or fps <= 0 or total_frames <= 0:
-        return [], {"enabled": True, "peaks_detected": 0, "peak_ranking": [], "allocations": []}
-
-    ranked_peaks = _rank_motion_peaks(candidates, fps=fps)
-    peak_ranking = [
-        {
-            "rank": index,
-            "timestamp": peak.get("timestamp", ""),
-            "frame_idx": int(peak.get("frame_idx", 0)),
-            "motion": round(float(peak.get("motion", 0.0)), 5),
-        }
-        for index, peak in enumerate(ranked_peaks, start=1)
-    ]
-    if not ranked_peaks:
-        return [], {"enabled": True, "peaks_detected": 0, "peak_ranking": [], "allocations": []}
-
-    primary_peak = ranked_peaks[0]
-    primary_motion = float(primary_peak.get("motion", 0.0))
-    secondary_peaks = [
-        peak for peak in ranked_peaks[1:]
-        if primary_motion <= 0 or float(peak.get("motion", 0.0)) >= (primary_motion * secondary_threshold_ratio)
-    ]
-
-    if secondary_peaks:
-        primary_budget = min(total_budget, max(1, int(round(total_budget * primary_ratio))))
-    else:
-        primary_budget = total_budget
-    remaining_budget = max(0, total_budget - primary_budget)
-    primary_radius = max(1, int(round(primary_window_seconds * fps)))
-    allocations = []
-    indices: set[int] = set()
-
-    primary_center = int(primary_peak.get("frame_idx", 0))
-    primary_indices = _evenly_spaced_frame_indices(primary_center, primary_radius, primary_budget, total_frames)
-    indices.update(primary_indices)
-    allocations.append(
-        {
-            "role": "primary",
-            "timestamp": primary_peak.get("timestamp", ""),
-            "frame_idx": primary_center,
-            "motion": round(primary_motion, 5),
-            "budget": len(primary_indices),
-        }
-    )
-
-    secondary_radius = max(1, int(round(0.25 * fps)))
-    for peak in secondary_peaks:
-        if remaining_budget <= 0:
-            break
-        allocation_size = min(max_secondary_frames_per_peak, remaining_budget)
-        center = int(peak.get("frame_idx", 0))
-        secondary_indices = _evenly_spaced_frame_indices(center, secondary_radius, allocation_size, total_frames)
-        indices.update(secondary_indices)
-        remaining_budget -= len(secondary_indices)
-        allocations.append(
-            {
-                "role": "secondary",
-                "timestamp": peak.get("timestamp", ""),
-                "frame_idx": center,
-                "motion": round(float(peak.get("motion", 0.0)), 5),
-                "budget": len(secondary_indices),
-            }
-        )
-
-    debug = {
-        "enabled": True,
-        "peaks_detected": len(ranked_peaks),
-        "peak_ranking": peak_ranking,
-        "allocations": allocations,
-        "secondary_threshold_ratio": secondary_threshold_ratio,
-        "primary_budget_ratio": primary_ratio,
-    }
-    return sorted(indices), debug
 
 
 def _dense_indices_for_motion_peaks(
@@ -872,20 +798,19 @@ def _tag_dense_candidate_reasons(candidates: list[dict], peaks: list[dict], fps:
         frame_context = candidate.setdefault("frame_context", {})
         frame_context["motion_peak_group_id"] = group_id
         if delta_seconds < -0.35:
-            reason = "dense pre-contact context"
+            reason = "pre-contact context"
         elif delta_seconds <= 0.35:
-            reason = "dense likely contact"
+            reason = "likely contact moment"
         elif delta_seconds <= max(0.75, window_seconds * 0.65):
-            reason = "dense post-contact context"
+            reason = "post-contact context"
         else:
-            reason = "dense aftermath"
+            reason = "aftermath context"
         if abs(delta_seconds) <= 0.12:
-            reason = "dense high-motion peak"
+            reason = "likely contact moment"
         if candidate.get("floor_activity_score", 0.0) >= 0.28 or candidate.get("player_heap_score", 0.0) >= 0.45:
             reason = "player-on-floor context" if delta_seconds > 0.35 else reason
-        if _refcheck_replay_context_enabled() and candidate.get("camera_replay_score", 0.0) >= 0.96:
-            reason = "replay context"
         candidate["selection_reason"] = reason
+        candidate["phase_bucket"] = _selection_phase(reason)
 
 
 def _is_chaotic_play_suspected(candidates: list[dict], peaks: list[dict]) -> bool:
@@ -917,13 +842,17 @@ def _cap_candidate_pool(candidates: list[dict], max_candidates: int) -> list[dic
     if len(candidates) <= max_candidates:
         return sorted(candidates, key=lambda item: item.get("timestamp_seconds", 0.0))
     _score_candidates(candidates)
-    dense = [item for item in candidates if str(item.get("selection_reason", "")).startswith("dense")]
-    dense_ids = {id(item) for item in dense}
-    context = [item for item in candidates if id(item) not in dense_ids]
+    action = [
+        item for item in candidates
+        if (item.get("phase_bucket") or _selection_phase(item.get("selection_reason", "")))
+        in {"pre_contact", "likely_contact", "post_contact", "aftermath"}
+    ]
+    action_ids = {id(item) for item in action}
+    context = [item for item in candidates if id(item) not in action_ids]
     keep: list[dict] = []
     seen: set[int] = set()
 
-    for item in sorted(dense, key=lambda c: c.get("score", 0.0), reverse=True):
+    for item in sorted(action, key=lambda c: c.get("score", 0.0), reverse=True):
         frame_idx = int(item.get("frame_idx", -1))
         if frame_idx in seen:
             continue
@@ -970,35 +899,19 @@ def _merge_candidates(primary: list[dict], dense: list[dict]) -> list[dict]:
     return merged
 
 
-def _tag_adaptive_candidate_reasons(candidates: list[dict], allocation_debug: dict) -> None:
-    allocations = allocation_debug.get("allocations") or []
-    if not allocations:
-        return
-    primary_centers = {item.get("frame_idx") for item in allocations if item.get("role") == "primary"}
-    secondary_centers = {item.get("frame_idx") for item in allocations if item.get("role") == "secondary"}
-    for candidate in candidates:
-        frame_idx = int(candidate.get("frame_idx", 0))
-        nearest_primary = min((abs(frame_idx - int(center)) for center in primary_centers), default=None)
-        nearest_secondary = min((abs(frame_idx - int(center)) for center in secondary_centers), default=None)
-        if nearest_primary is not None and (nearest_secondary is None or nearest_primary <= nearest_secondary):
-            candidate["selection_reason"] = "primary motion peak window"
-        elif nearest_secondary is not None:
-            candidate["selection_reason"] = "secondary motion peak context"
-
-
 def _candidate_selection_weight(candidate: dict) -> float:
     reason = str(candidate.get("selection_reason", ""))
     weight = float(candidate.get("score", 0.0))
-    if "likely contact" in reason or "high-motion peak" in reason:
+    if "likely contact" in reason or "contact moment" in reason:
         weight += 0.45
-    elif "before contact" in reason:
+    elif "pre-contact" in reason:
         weight += 0.32
-    elif "after contact" in reason or "aftermath" in reason:
+    elif "post-contact" in reason or "aftermath" in reason:
         weight += 0.28
     elif "player-on-floor" in reason or "loose-ball" in reason:
         weight += 0.24
-    elif "replay" in reason or "alternate angle" in reason:
-        weight += 0.16
+    elif "clip start" in reason or "clip end" in reason:
+        weight += 0.18
     return weight
 
 
@@ -1012,101 +925,90 @@ def _select_evidence_candidates(
         return []
 
     _score_candidates(candidates)
+    for candidate in candidates:
+        candidate["phase_bucket"] = candidate.get("phase_bucket") or _selection_phase(
+            candidate.get("selection_reason", "")
+        )
 
-    ranked_motion = sorted(candidates, key=lambda c: c["motion_norm"], reverse=True)
-    top_motion = ranked_motion[:5]
-    selected_ids = set()
     selected = []
+    selected_ids = set()
+    min_spacing = 3
 
-    for peak in top_motion:
-        peak_pos = peak["candidate_id"]
-        offsets = [
-            (-3, "before contact window"),
-            (-2, "before contact window"),
-            (-1, "before contact window"),
-            (0, "likely contact window"),
-            (1, "likely contact window"),
-            (2, "after contact window"),
-            (3, "after contact window"),
-        ]
-        if chaotic_play_suspected:
-            offsets.extend([(4, "aftermath context"), (5, "player-on-floor context")])
-        for offset, reason in offsets:
-            neighbor_pos = peak_pos + offset
-            if neighbor_pos < 0 or neighbor_pos >= len(candidates):
-                continue
-            item = candidates[neighbor_pos]
-            if item["candidate_id"] in selected_ids:
-                continue
-            if item.get("selection_reason", "") in {"replay context", "alternate angle context"}:
-                reason = item["selection_reason"]
-            elif item.get("floor_activity_score", 0.0) >= 0.32 and offset >= 2:
-                reason = "player-on-floor context"
+    def add_candidate(item: dict, reason: str | None = None, force: bool = False) -> bool:
+        if len(selected) >= target_max or item.get("candidate_id") in selected_ids:
+            return False
+        if not force and len(selected) >= target_min:
+            too_close = any(
+                abs(int(item.get("frame_idx", 0)) - int(existing.get("frame_idx", 0))) <= min_spacing
+                for existing in selected
+            )
+            if too_close:
+                return False
+        if reason:
             item["selection_reason"] = reason
-            selected.append(item)
-            selected_ids.add(item["candidate_id"])
-            if len(selected) >= target_max:
-                break
-        if len(selected) >= target_max:
-            break
+        item["phase_bucket"] = _selection_phase(item.get("selection_reason", ""))
+        selected.append(item)
+        selected_ids.add(item["candidate_id"])
+        return True
+
+    def best_for_phase(phase: str, prefer_earliest: bool = False, prefer_latest: bool = False) -> dict | None:
+        phase_candidates = [
+            item for item in candidates
+            if (item.get("phase_bucket") or _selection_phase(item.get("selection_reason", ""))) == phase
+        ]
+        if not phase_candidates:
+            return None
+        if prefer_earliest:
+            return min(phase_candidates, key=lambda c: (c.get("timestamp_seconds", 0.0), -c.get("score", 0.0)))
+        if prefer_latest:
+            return max(phase_candidates, key=lambda c: (c.get("timestamp_seconds", 0.0), c.get("score", 0.0)))
+        return max(phase_candidates, key=_candidate_selection_weight)
+
+    start = best_for_phase("clip_start_context", prefer_earliest=True)
+    if start:
+        add_candidate(start, "clip start context", force=True)
+    end = best_for_phase("clip_end_context", prefer_latest=True)
+    if end:
+        add_candidate(end, "clip end context", force=True)
+
+    for phase in ["pre_contact", "likely_contact", "post_contact"]:
+        item = best_for_phase(phase)
+        if item:
+            add_candidate(item, force=True)
 
     if chaotic_play_suspected:
-        for item in sorted(
-            candidates,
-            key=lambda c: (c.get("floor_activity_score", 0.0), c.get("player_heap_score", 0.0), c.get("score", 0.0)),
-            reverse=True,
-        ):
-            if len(selected) >= target_max:
-                break
-            if item["candidate_id"] in selected_ids:
-                continue
-            item["selection_reason"] = "player-on-floor context"
-            selected.append(item)
-            selected_ids.add(item["candidate_id"])
+        item = best_for_phase("aftermath")
+        if item:
+            add_candidate(item, force=True)
 
-    if _refcheck_replay_context_enabled():
-        for item in sorted(candidates, key=lambda c: (c.get("camera_replay_score", 0.0), c.get("score", 0.0)), reverse=True):
-            if len(selected) >= target_max or item.get("camera_replay_score", 0.0) < 0.96:
-                break
-            if item["candidate_id"] in selected_ids:
-                continue
-            item["selection_reason"] = "replay context"
-            selected.append(item)
-            selected_ids.add(item["candidate_id"])
+    for phase in ["temporal_coverage", "aftermath"]:
+        item = best_for_phase(phase)
+        if item:
+            add_candidate(item)
 
-    ranked_score = sorted(candidates, key=_candidate_selection_weight, reverse=True)
-    for item in ranked_score:
+    for item in sorted(candidates, key=_candidate_selection_weight, reverse=True):
         if len(selected) >= target_max:
             break
-        if item["candidate_id"] in selected_ids:
-            continue
-        too_close = any(abs(item["frame_idx"] - existing["frame_idx"]) <= 2 for existing in selected)
-        if too_close and len(selected) >= target_min:
+        if item.get("candidate_id") in selected_ids:
             continue
         if item["selection_reason"] == "selected for temporal coverage":
             if item["motion_norm"] >= 0.55:
-                item["selection_reason"] = "high motion"
+                item["selection_reason"] = "likely contact moment"
             elif item["motion_norm"] <= 0.20:
-                item["selection_reason"] = "selected for temporal coverage"
+                item["selection_reason"] = "temporal coverage"
             else:
-                item["selection_reason"] = "possible contact context"
-        selected.append(item)
-        selected_ids.add(item["candidate_id"])
-
-    selected = sorted(selected, key=lambda c: c["timestamp_seconds"])
-    if len(selected) > target_max:
-        selected = selected[:target_max]
+                item["selection_reason"] = "temporal coverage"
+        add_candidate(item)
 
     if len(selected) < target_min:
         for item in sorted(candidates, key=lambda c: c["timestamp_seconds"]):
-            if item["candidate_id"] in selected_ids:
-                continue
-            selected.append(item)
-            selected_ids.add(item["candidate_id"])
             if len(selected) >= target_min:
                 break
-        selected = sorted(selected, key=lambda c: c["timestamp_seconds"])
-    return selected
+            if item.get("candidate_id") in selected_ids:
+                continue
+            add_candidate(item, force=True)
+
+    return sorted(selected[:target_max], key=lambda c: c["timestamp_seconds"])
 
 
 def _clean_for_session(result: dict) -> None:
@@ -1121,15 +1023,15 @@ def _default_recommended_frames(evidence_frames: list[dict]) -> list[dict]:
     for frame in evidence_frames:
         reason = frame.get("selection_reason", "")
         weight = 0
-        if "likely contact" in reason or "high-motion peak" in reason or "high motion" in reason:
+        if "likely contact" in reason or "contact moment" in reason or "high motion" in reason:
             weight = 5
-        elif "before contact" in reason:
+        elif "pre-contact" in reason:
             weight = 4
-        elif "after contact" in reason:
+        elif "post-contact" in reason:
             weight = 3
         elif "aftermath" in reason or "player-on-floor" in reason:
             weight = 2
-        elif "possible contact" in reason or "replay" in reason or "alternate angle" in reason:
+        elif "clip start" in reason or "clip end" in reason or "temporal coverage" in reason:
             weight = 1
         priority.append((weight, frame))
     priority.sort(key=lambda item: (item[0], item[1].get("score", 0.0)), reverse=True)
@@ -1188,13 +1090,10 @@ _VISUAL_PROMPT_INSTRUCTIONS = [
     "Do not infer intent ('he meant to', 'tried to'), causation ('because of'), exact timing in seconds between frames, or what happened during gaps you cannot see.",
     "If contact is visible, describe only the visible body positions and contact appearance. Do not assign responsibility, blame, or fault.",
     "",
-    "# REPLAY VS SEPARATE PLAY",
-    "Distinguish between a genuinely separate incident and the same incident shown again as a broadcast replay or alternate camera angle.",
-    "Default assumption is single_play. Do NOT mark possible_replay_duplicate=true unless strong discontinuity evidence is visible.",
-    "Strong replay/discontinuity evidence includes: scoreboard or game clock reset/jump backward, broadcast replay graphics/wipes, clearly repeated ball-player positions that recur non-continuously, or hard camera cuts that repeat the same moment.",
-    "If evidence is suggestive but weak, set sequence_interpretation to 'uncertain_continuity', keep possible_replay_duplicate=false, and explain uncertainty in sequence_interpretation_reason.",
-    "Do not infer repeated jump-shot attempts or duplicate possessions from similar body poses alone.",
-    "Do not describe replay-like sequences as separate incidents unless there is clear visual evidence (e.g., different score, different players, different court location) that they are separate plays.",
+    "# SEQUENCE CONTINUITY",
+    "Distinguish between a single continuous play and clearly separate plays only when the selected frames visibly support that distinction.",
+    "Default assumption is single_play unless the frames clearly show a different possession, different players, or a different court location.",
+    "If continuity is uncertain, set sequence_interpretation to 'uncertain_continuity' and explain the specific visual uncertainty in sequence_interpretation_reason.",
     "",
     "# SELECTED CALL ANCHOR (CRITICAL)",
     "The user-provided original call is the review anchor for primary_issue.",
@@ -1223,7 +1122,7 @@ _VISUAL_PROMPT_INSTRUCTIONS = [
     "visual_frame_quality rates image clarity and usefulness only (lighting, focus, motion blur, occlusion, resolution, framing). It does not rate the play itself.",
     "verdict_readiness rates whether a future Verdict Agent has enough visual continuity (before / during / after the key moment) to reason about the call.",
     "can_reason_about_call indicates only whether selected frames contain enough visual continuity for a later Verdict Agent to reason. It is not your decision on the call.",
-    "Set can_reason_about_call to false if any of the following hold: defender feet are not clearly visible before contact, restricted-area or boundary context is unclear, the exact moment of contact is not continuously captured, referee signal or original call is not visible and not provided by the user, or the play may be a replay duplicate.",
+    "Set can_reason_about_call to false if any of the following hold: defender feet are not clearly visible before contact, restricted-area or boundary context is unclear, the exact moment of contact is not continuously captured, or referee signal or original call is not visible and not provided by the user.",
     "If can_reason_about_call is false, missing_evidence must enumerate exactly what is missing in concrete visual terms (e.g., 'no frame shows the defender's feet at the moment of contact').",
     "limitations should list visual constraints that affect interpretation even when readiness is otherwise acceptable (e.g., 'partial occlusion of the ball-handler's lower body in frame_003').",
     "",
@@ -1231,7 +1130,7 @@ _VISUAL_PROMPT_INSTRUCTIONS = [
     "video_summary RULES:",
     "- Write video_summary as a single continuous neutral paragraph of plain descriptive prose, multiple sentences, in temporal order, as if narrating continuous footage.",
     "- DO NOT mention frame_id, frame numbers, the word 'frame', timestamps, or any reference to the selection, scoring, or recommendation process.",
-    "- DO NOT mention Agent 1, Agent 2, the Verdict Agent, replay-readiness, can_reason_about_call, evidence quality, or any pipeline/metadata field.",
+    "- DO NOT mention Agent 1, Agent 2, the Verdict Agent, can_reason_about_call, evidence quality, or any pipeline/metadata field.",
     "- DO NOT include rules reasoning, verdicts, fairness judgments, or call-type labels.",
     "- video_summary must remain self-contained and reusable as an embedding/search query. Avoid pipeline jargon. Describe only what is visibly happening.",
     "- Cover setting, players, ball state, contact if any, and how the action progresses, but as flowing prose only.",
@@ -1240,7 +1139,7 @@ _VISUAL_PROMPT_INSTRUCTIONS = [
     "- Each key_events[].description must be a complete declarative sentence grounded in the cited frame.",
     "- Each possible_critical_moments[].description must be a complete sentence describing what is visible in the cited frame.",
     "- Recommend frames based only on visual clarity, sequence relevance, and whether they show before/during/after positions of the key moment.",
-    "Quality/readiness fields (visual_frame_quality, verdict_readiness, can_reason_about_call, possible_replay_duplicate, sequence_interpretation, sequence_interpretation_reason, missing_evidence, limitations) live as their own structured values. Never narrate them inside video_summary.",
+    "Quality/readiness fields (visual_frame_quality, verdict_readiness, can_reason_about_call, sequence_interpretation, sequence_interpretation_reason, missing_evidence, limitations) live as their own structured values. Never narrate them inside video_summary.",
     "officiating_issue_summary may reference what a downstream reviewer should examine, but must remain neutral and visually grounded; it is NOT a verdict.",
     "",
     "# EXAMPLES OF GOOD VS FORBIDDEN video_summary",
@@ -1261,8 +1160,7 @@ _VISUAL_PROMPT_INSTRUCTIONS = [
     '  "primary_event": {"tier":"Tier A|Tier B|Tier C|Tier D","timestamp":"M:SS.ss","frame_ids":["frame_00x"],"description":"string","why_this_is_primary":"string"},',
     '  "video_summary": "string",',
     '  "key_events": [{"timestamp": "M:SS.ss", "frame_id": "frame_00x", "description": "string"}],',
-    '  "sequence_interpretation": "single_play|multiple_plays|possible_replay|unclear|uncertain_continuity",',
-    '  "possible_replay_duplicate": false,',
+    '  "sequence_interpretation": "single_play|multiple_plays|unclear|uncertain_continuity",',
     '  "sequence_interpretation_reason": "string",',
     '  "primary_issue": "goaltending|blocking/charging|traveling|shooting foul|personal foul|out of bounds|no-call|unclear",',
     '  "primary_reason": "string",',
@@ -1305,23 +1203,13 @@ _CRITICAL_MOMENT_WHY_MAP = {
     "high motion": "possible contact",
     "pre-contact context": "defender position",
     "post-contact context": "possible contact",
-    "selected for temporal coverage": "other",
-    "possible contact context": "defender position",
-    "primary motion peak window": "possible contact",
-    "secondary motion peak context": "possible contact",
-    "before contact window": "defender position",
-    "likely contact window": "possible contact",
-    "after contact window": "possible contact",
+    "clip start context": "other",
+    "clip end context": "other",
+    "temporal coverage": "other",
     "aftermath context": "possible contact",
-    "replay context": "other",
-    "alternate angle context": "other",
     "player-on-floor context": "possible contact",
     "loose-ball context": "possible contact",
-    "dense pre-contact context": "defender position",
-    "dense likely contact": "possible contact",
-    "dense post-contact context": "possible contact",
-    "dense high-motion peak": "possible contact",
-    "dense aftermath": "possible contact",
+    "likely contact moment": "possible contact",
 }
 
 
@@ -1345,7 +1233,6 @@ def _new_visual_result(model_name: str) -> dict:
         "key_events": [],
         "possible_critical_moments": [],
         "sequence_interpretation": "unclear",
-        "possible_replay_duplicate": False,
         "sequence_interpretation_reason": "",
         "primary_issue": "unclear",
         "primary_reason": "",
@@ -1401,6 +1288,7 @@ def _new_visual_result(model_name: str) -> dict:
             "evidence_frame_selection_reasons": [],
             "chaotic_play_suspected": False,
             "candidates_scanned_count": 0,
+            "boundary_candidates_count": 0,
             "dense_candidates_scanned_count": 0,
             "frames_extracted_count": 0,
             "frames_sent_to_gemini_count": 0,
@@ -1411,7 +1299,9 @@ def _new_visual_result(model_name: str) -> dict:
             "error_message": None,
             "raw_response_excerpt": "",
             "scoring_top_candidates": [],
-            "adaptive_frame_selection": {"enabled": _env_flag("USE_ADAPTIVE_FRAME_SELECTION", True)},
+            "phase_bucket_counts": {},
+            "phase_distribution_selected": {},
+            "selection_mode": "",
         },
     }
 
@@ -1482,7 +1372,17 @@ def _select_candidate_frames(capture, total_frames: int, fps: float, result: dic
     try:
         scan_indices = _candidate_indices(total_frames=total_frames, fps=fps, duration=duration)
         result["debug"]["candidates_scanned_count"] = len(scan_indices)
+        result["debug"]["boundary_candidates_count"] = sum(
+            1 for idx in scan_indices
+            if (
+                idx == 0
+                or idx == total_frames - 1
+                or idx <= int((total_frames - 1) * 0.08)
+                or idx >= int((total_frames - 1) * 0.92)
+            )
+        )
         low_rate_candidates = _collect_candidates(capture=capture, indices=scan_indices, fps=fps)
+        _tag_boundary_candidate_reasons(low_rate_candidates, total_frames)
         _score_candidates(low_rate_candidates)
         result["debug"]["low_rate_candidates_count"] = len(low_rate_candidates)
         if not low_rate_candidates:
@@ -1517,9 +1417,11 @@ def _select_candidate_frames(capture, total_frames: int, fps: float, result: dic
             ]
 
         candidates = _merge_candidates(low_rate_candidates, dense_candidates)
+        _tag_boundary_candidate_reasons(candidates, total_frames)
         _score_candidates(candidates)
         candidates = _cap_candidate_pool(candidates, _refcheck_max_candidate_frames())
         _reindex_candidates(candidates)
+        _tag_boundary_candidate_reasons(candidates, total_frames)
         _score_candidates(candidates)
 
         chaotic_play_suspected = _is_chaotic_play_suspected(candidates, peaks)
@@ -1542,21 +1444,10 @@ def _select_candidate_frames(capture, total_frames: int, fps: float, result: dic
         result["debug"]["evidence_frame_selection_reasons"] = [
             item.get("selection_reason", "selected for temporal coverage") for item in selected
         ]
-        result["debug"]["adaptive_frame_selection"] = {
-            "enabled": True,
-            "peaks_detected": len(peaks),
-            "peak_ranking": peak_debug,
-            "allocations": [
-                {
-                    "group_id": peak.get("group_id"),
-                    "timestamp": peak.get("timestamp"),
-                    "frame_idx": peak.get("frame_idx"),
-                    "window_seconds": dense_window_seconds,
-                }
-                for peak in peak_debug
-            ],
-        }
-        selection_mode = "dense_motion_peak_selection" if dense_candidates else "scored"
+        result["debug"]["phase_bucket_counts"] = _phase_bucket_counts(candidates)
+        result["debug"]["phase_distribution_selected"] = _phase_bucket_counts(selected)
+        selection_mode = "coverage_balanced_motion_selection"
+        result["debug"]["selection_mode"] = selection_mode
         logger.info(
             "Frame selection: low_rate=%s dense=%s merged=%s peaks=%s selected=%s chaotic=%s",
             len(low_rate_candidates),
@@ -1578,13 +1469,19 @@ def _select_candidate_frames(capture, total_frames: int, fps: float, result: dic
     except Exception:
         fallback_indices = _uniform_fallback_indices(total_frames, desired=8)
         fallback_candidates = _collect_candidates(capture=capture, indices=fallback_indices, fps=fps)
+        _tag_boundary_candidate_reasons(fallback_candidates, total_frames)
         for item in fallback_candidates:
-            item["selection_reason"] = "selected for temporal coverage"
+            if item.get("selection_reason") not in {"clip start context", "clip end context"}:
+                item["selection_reason"] = "temporal coverage"
+            item["phase_bucket"] = _selection_phase(item.get("selection_reason", ""))
         result["debug"]["candidates_scanned_count"] = len(fallback_indices)
         result["debug"]["low_rate_candidates_count"] = len(fallback_candidates)
         result["debug"]["dense_candidates_count"] = 0
         result["debug"]["merged_candidates_count"] = len(fallback_candidates)
         result["debug"]["chaotic_play_suspected"] = False
+        result["debug"]["phase_bucket_counts"] = _phase_bucket_counts(fallback_candidates)
+        result["debug"]["phase_distribution_selected"] = _phase_bucket_counts(fallback_candidates)
+        result["debug"]["selection_mode"] = "uniform_fallback"
         return fallback_candidates, "uniform_fallback"
 
 
@@ -1593,7 +1490,7 @@ def _persist_evidence_frames(selected_candidates: list, frames_dir: Path, cv2_mo
     for i, candidate in enumerate(selected_candidates, start=1):
         frame_name = f"{uuid4().hex}_{i}.jpg"
         frame_path = frames_dir / frame_name
-        wrote = cv2_mod.imwrite(str(frame_path), candidate["frame"], [int(cv2_mod.IMWRITE_JPEG_QUALITY), 82])
+        wrote = cv2_mod.imwrite(str(frame_path), candidate["frame"], [int(cv2_mod.IMWRITE_JPEG_QUALITY), 92])
         if not wrote:
             continue
         evidence_frames.append(
@@ -1608,6 +1505,9 @@ def _persist_evidence_frames(selected_candidates: list, frames_dir: Path, cv2_mo
                 "motion": round(float(candidate.get("motion", 0.0)), 5),
                 "motion_norm": round(float(candidate.get("motion_norm", 0.0)), 4),
                 "frame_context": candidate.get("frame_context", {}),
+                "phase_bucket": candidate.get("phase_bucket") or _selection_phase(
+                    candidate.get("selection_reason", "")
+                ),
             }
         )
     return evidence_frames
@@ -1620,14 +1520,15 @@ def _build_selection_summary(
     debug: dict | None = None,
 ) -> str:
     debug = debug or {}
-    if selection_mode == "dense_motion_peak_selection":
+    if selection_mode == "coverage_balanced_motion_selection":
         peak_count = len(debug.get("motion_peaks_selected") or [])
         dense_fps = debug.get("dense_fps_used") or _refcheck_dense_fps()
         merged_count = debug.get("merged_candidates_count") or 0
         summary = (
-            f"Scanned {scanned_count} low-rate candidate frames, expanded dense windows around "
+            f"Scanned {scanned_count} whole-clip low-rate candidate frames, expanded dense windows around "
             f"{peak_count} motion peaks at {dense_fps:g} FPS, merged {merged_count} local candidates, "
-            f"and selected {num_evidence} evidence frames with before/during/after coverage around likely contact moments."
+            f"and selected {num_evidence} coverage-balanced evidence frames with start/end, before/contact/after, "
+            "and temporal context."
         )
         if debug.get("chaotic_play_suspected"):
             summary += (
@@ -1635,18 +1536,6 @@ def _build_selection_summary(
                 "and player-on-floor context frames."
             )
         return summary
-    if selection_mode == "adaptive_motion_peak_selection":
-        return (
-            f"Scanned {scanned_count} low-rate candidate frames, ranked motion peaks by intensity, "
-            f"and selected {num_evidence} evidence frames with most of the frame budget concentrated "
-            "around the strongest motion peak plus limited context from qualifying secondary peaks."
-        )
-    if selection_mode == "scored_with_dense_contact_windows":
-        return (
-            f"Scanned {scanned_count} low-rate candidate frames, expanded dense windows around top motion peaks, "
-            f"and selected {num_evidence} evidence frames using motion, sharpness, duplicate filtering, "
-            "and before/during/after coverage around likely contact moments."
-        )
     if selection_mode == "scored":
         return (
             f"Scanned {scanned_count} candidate frames and selected "
@@ -1681,7 +1570,7 @@ def _apply_missing_api_key(result: dict) -> None:
     ]
     result["officiating_issue_summary"] = "No neutral visual sequence summary is available."
     result["visible_call_type_reason"] = "Agent 1 does not classify the call without directly visible evidence."
-    result["sequence_interpretation_reason"] = "No model output was available to distinguish a single play from a replay or separate play."
+    result["sequence_interpretation_reason"] = "No model output was available to distinguish a single continuous play from separate plays."
 
 
 def _build_visual_prompt(evidence_frames: list[dict], original_call: str | None) -> str:
@@ -1735,7 +1624,7 @@ def _apply_empty_response(result: dict) -> None:
     ]
     result["officiating_issue_summary"] = "No neutral visual sequence summary was returned."
     result["visible_call_type_reason"] = "No model output available."
-    result["sequence_interpretation_reason"] = "No model output was available to assess replay or sequence continuity."
+    result["sequence_interpretation_reason"] = "No model output was available to assess sequence continuity."
 
 
 def _apply_unstructured_response(result: dict, raw_text: str) -> None:
@@ -2076,32 +1965,17 @@ def _apply_payload_to_result(result: dict, payload: dict, evidence_frames: list[
     result["possible_critical_moments"] = normalized_critical or result["possible_critical_moments"]
 
     sequence_interpretation = _normalize_sequence_interpretation(payload.get("sequence_interpretation", ""))
-    possible_replay_duplicate = bool(payload.get("possible_replay_duplicate", False))
     sequence_reason = str(
         payload.get("sequence_interpretation_reason", "")
     ).strip()[:500]
-    strong_replay_discontinuity = _has_strong_replay_discontinuity(
-        sequence_reason,
-        result["video_summary"],
-        " ".join(normalized_limitations),
-        " ".join(normalized_missing),
-    )
-    if possible_replay_duplicate or sequence_interpretation == "possible_replay":
-        if not strong_replay_discontinuity:
-            possible_replay_duplicate = False
-            sequence_interpretation = "single_play"
-            if not sequence_reason:
-                sequence_reason = (
-                    "No strong discontinuity indicators (clock reset, replay graphics, or non-continuous repeated positions) were visible, so this sequence is treated as a single play."
-                )
-    elif sequence_interpretation in {"unclear", "uncertain_continuity"} and not strong_replay_discontinuity:
-        possible_replay_duplicate = False
-        if sequence_interpretation == "unclear":
-            sequence_interpretation = "single_play"
-        if not sequence_reason:
-            sequence_reason = "Continuity is uncertain in isolated frames, but no strong replay evidence is visible."
+    if sequence_interpretation == "unclear":
+        sequence_interpretation = "single_play"
+    if not sequence_reason:
+        if sequence_interpretation == "single_play":
+            sequence_reason = "Selected frames are treated as one continuous play unless they clearly show separate plays."
+        elif sequence_interpretation == "uncertain_continuity":
+            sequence_reason = "Continuity is uncertain in isolated frames."
     result["sequence_interpretation"] = sequence_interpretation
-    result["possible_replay_duplicate"] = possible_replay_duplicate
     result["sequence_interpretation_reason"] = sequence_reason
     result["visible_call_type"] = _normalize_call_type(payload.get("visible_call_type", ""))
     result["visible_call_type_reason"] = str(payload.get("visible_call_type_reason", "")).strip()[:500]
@@ -2220,8 +2094,7 @@ def _apply_payload_to_result(result: dict, payload: dict, evidence_frames: list[
     result["can_reason_about_call"] = (
         requested_can_reason
         and result["verdict_readiness"] == "Ready"
-        and not result["possible_replay_duplicate"]
-        and result["sequence_interpretation"] not in {"possible_replay", "uncertain_continuity"}
+        and result["sequence_interpretation"] != "uncertain_continuity"
     )
     result["missing_evidence"] = normalized_missing
     if goaltending_selected and (not result["can_reason_about_call"] or result["verdict_readiness"] != "Ready"):
@@ -2237,10 +2110,6 @@ def _apply_payload_to_result(result: dict, payload: dict, evidence_frames: list[
                 result["missing_evidence"].append(hint)
         result["missing_evidence"] = result["missing_evidence"][:8]
     if requested_can_reason and not result["can_reason_about_call"]:
-        if result["possible_replay_duplicate"] or result["sequence_interpretation"] == "possible_replay":
-            result["missing_evidence"].append(
-                "The sequence may be a replay duplicate, so later verdict reasoning should not treat it as a continuous single incident."
-            )
         if result["verdict_readiness"] != "Ready":
             result["missing_evidence"].append(
                 "Verdict readiness is not marked Ready because the selected frames do not provide enough continuous visual context."
@@ -2462,9 +2331,33 @@ def retrieve_rules_for_issues(visual_result: dict) -> dict:
     for issue_id, queries in queries_by_issue.items():
         rules = []
         for query in queries[:6]:
-            rules.extend(_retrieve_matching_rules(query, top_k=4))
+            rules.extend(_retrieve_matching_rules(query, top_k=3))
         grouped[issue_id] = _dedupe_rules(rules)[:6]
     return grouped
+
+
+def _cap_grouped_rules_total(grouped_rules: dict, max_rules: int = 3) -> dict:
+    if max_rules <= 0:
+        return {}
+    flattened = []
+    for issue_id, rules in (grouped_rules or {}).items():
+        for rule in rules or []:
+            flattened.append((issue_id, rule))
+    capped = _dedupe_rules([rule for _, rule in flattened])[:max_rules]
+    capped_keys = {
+        rule.get("rule_id") or (rule.get("section"), rule.get("text"))
+        for rule in capped
+    }
+    capped_by_issue = {}
+    for issue_id, rule in flattened:
+        key = rule.get("rule_id") or (rule.get("section"), rule.get("text"))
+        if key not in capped_keys:
+            continue
+        capped_by_issue.setdefault(issue_id, []).append(rule)
+        capped_keys.remove(key)
+        if not capped_keys:
+            break
+    return capped_by_issue
 
 
 # ----------------------------------------------------------------------------
@@ -2484,7 +2377,6 @@ _VERDICT_PROMPT_INSTRUCTIONS = [
     "Before blocking/charging reasoning, inspect issue_cards, possible_high_contact, and contact_points. Treat high contact as a separate issue from body-position or charge/block analysis.",
     "Integrate the visual evidence with standard NBA officiating expectations, including but not limited to: blocking vs. charging, traveling, goaltending and basket interference, shooting fouls, personal fouls, out-of-bounds, three-second / defensive three-second, and restricted-area rules.",
     "Cite frames by frame_id when stating what you see. You may quote short phrases from the Agent 1 video_summary when they support a claim.",
-    "Treat repeated frames from a different camera angle as the same incident, not separate plays.",
     "",
     "# VERDICT LABELS",
     "Output exactly one of: 'Fair Call', 'Bad Call', 'Inconclusive'.",
@@ -2514,7 +2406,8 @@ _VERDICT_PROMPT_INSTRUCTIONS = [
     "- reasoning must be a single short paragraph of 3 to 6 sentences.",
     "- key_factors must contain between 2 and 5 entries.",
     "- issue_analysis must contain one entry for each important issue_card, including high_contact when present.",
-    "- rule_basis: a brief, plain-language statement of which officiating consideration drove the verdict (e.g., 'Defender appears set with both feet outside the restricted area before contact, consistent with a charge'). Keep it neutral and specific to what is visible.",
+    "- rule_basis must explicitly mention the retrieved database rule section or rule_id that drove the verdict when rulebook context is provided.",
+    "- relevant_rules_used must list the most relevant retrieved database rules you relied on. Use only rule_id/section values present in the provided Rulebook context.",
     "- limitations must list anything that constrained the verdict (occluded body parts, missing pre/post-contact frames, ambiguous body part of contact, etc.).",
     "Return valid JSON only, with no prose outside the JSON, no markdown fences, and exactly this schema:",
     "{",
@@ -2529,6 +2422,7 @@ _VERDICT_PROMPT_INSTRUCTIONS = [
     '  "issue_analysis": [{"issue_id":"issue_001","issue_type":"string","finding":"string","confidence":"Low|Medium|High","relevant_frames":["frame_00x"],"relevant_rules":["rule_id_or_section"]}],',
     '  "key_factors": [{"frame_id": "frame_00x", "timestamp": "M:SS.ss", "factor": "string"}],',
     '  "rule_basis": "string",',
+    '  "relevant_rules_used": [{"issue_id":"issue_001","rule_id":"string","section":"string","why_relevant":"string"}],',
     '  "limitations": ["string"]',
     "}",
 ]
@@ -2625,6 +2519,69 @@ def _normalize_issue_analysis(payload_items, frame_id_map: dict, matched_rules_b
     return normalized
 
 
+def _rule_lookup_by_key(matched_rules_by_issue: dict) -> dict[str, tuple[str, dict]]:
+    lookup = {}
+    for issue_id, rules in (matched_rules_by_issue or {}).items():
+        for rule in rules:
+            for key in [str(rule.get("rule_id") or "").strip(), str(rule.get("section") or "").strip()]:
+                if key and key not in lookup:
+                    lookup[key] = (str(issue_id), rule)
+    return lookup
+
+
+def _normalize_relevant_rules_used(payload_items, matched_rules_by_issue: dict, issue_analysis: list[dict]) -> list[dict]:
+    lookup = _rule_lookup_by_key(matched_rules_by_issue)
+    normalized = []
+    seen = set()
+
+    def add(issue_id: str, rule: dict, why_relevant: str) -> None:
+        key = str(rule.get("rule_id") or rule.get("section") or "").strip()
+        if not key or key in seen or len(normalized) >= 6:
+            return
+        seen.add(key)
+        normalized.append(
+            {
+                "issue_id": str(issue_id or "").strip()[:120],
+                "rule_id": str(rule.get("rule_id") or "").strip()[:120],
+                "section": str(rule.get("section") or "").strip()[:120],
+                "why_relevant": _complete_sentence(str(why_relevant or "").strip(), max_len=350)
+                or "Retrieved rulebook context used by the Verdict Agent.",
+            }
+        )
+
+    if isinstance(payload_items, list):
+        for item in payload_items[:8]:
+            if not isinstance(item, dict):
+                continue
+            rule_key = str(item.get("rule_id") or item.get("section") or "").strip()
+            if rule_key not in lookup:
+                continue
+            issue_id, rule = lookup[rule_key]
+            add(item.get("issue_id") or issue_id, rule, item.get("why_relevant", ""))
+
+    if normalized:
+        return normalized
+
+    for issue in issue_analysis or []:
+        for rule_key in issue.get("relevant_rules") or []:
+            if rule_key not in lookup:
+                continue
+            issue_id, rule = lookup[rule_key]
+            add(
+                issue.get("issue_id") or issue_id,
+                rule,
+                f"Relevant to {issue.get('issue_type', 'the reviewed issue')} analysis.",
+            )
+
+    if normalized:
+        return normalized
+
+    for issue_id, rules in (matched_rules_by_issue or {}).items():
+        for rule in rules[:1]:
+            add(issue_id, rule, "Top retrieved rulebook match for this issue.")
+    return normalized
+
+
 def _normalize_other_possible_issues(payload_items) -> list[dict]:
     if not isinstance(payload_items, list):
         return []
@@ -2662,6 +2619,7 @@ def _new_verdict_result(model_name: str) -> dict:
         "issue_analysis": [],
         "key_factors": [],
         "rule_basis": "",
+        "relevant_rules_used": [],
         "matched_rules": [],
         "matched_rules_by_issue": {},
         "limitations": [],
@@ -2684,6 +2642,46 @@ def _new_verdict_result(model_name: str) -> dict:
             "error_message": None,
         },
     }
+
+
+def _cap_frames_with_phase_spread(frames: list[dict], max_frames: int) -> list[dict]:
+    if len(frames) <= max_frames:
+        return sorted(frames, key=lambda frame: _timestamp_to_seconds(frame.get("timestamp", "")))
+    selected = []
+    seen = set()
+    phase_order = [
+        "likely_contact",
+        "pre_contact",
+        "post_contact",
+        "clip_start_context",
+        "clip_end_context",
+        "aftermath",
+        "temporal_coverage",
+    ]
+
+    def add(frame: dict) -> bool:
+        frame_id = frame.get("frame_id")
+        if not frame_id or frame_id in seen or len(selected) >= max_frames:
+            return False
+        selected.append(frame)
+        seen.add(frame_id)
+        return True
+
+    for phase in phase_order:
+        phase_frames = [
+            frame for frame in frames
+            if (frame.get("phase_bucket") or _selection_phase(frame.get("reason", ""))) == phase
+        ]
+        if not phase_frames:
+            continue
+        add(max(phase_frames, key=lambda frame: (frame.get("weight", 0), frame.get("score", 0.0))))
+
+    for frame in sorted(frames, key=lambda item: (item.get("weight", 0), item.get("score", 0.0)), reverse=True):
+        if len(selected) >= max_frames:
+            break
+        add(frame)
+
+    return sorted(selected, key=lambda frame: _timestamp_to_seconds(frame.get("timestamp", "")))
 
 
 def _pick_verdict_frames(visual_result: dict) -> list[dict]:
@@ -2713,6 +2711,8 @@ def _pick_verdict_frames(visual_result: dict) -> list[dict]:
                     "local_path": base["local_path"],
                     "reason": (reason or base.get("selection_reason", "selected for temporal coverage"))[:220],
                     "score": base.get("score", 0.0),
+                    "weight": weight,
+                    "phase_bucket": base.get("phase_bucket") or _selection_phase(base.get("selection_reason", "")),
                 },
             )
         )
@@ -2766,8 +2766,11 @@ def _pick_verdict_frames(visual_result: dict) -> list[dict]:
             add_frame(rec.get("frame_id", ""), str(rec.get("reason", "")).strip(), 65)
 
     if selected:
-        selected_frames = [item[1] for item in sorted(selected, key=lambda item: (item[0], item[1].get("score", 0.0)), reverse=True)]
-        return sorted(selected_frames[:max_frames], key=lambda frame: _timestamp_to_seconds(frame.get("timestamp", "")))
+        selected_frames = [
+            item[1]
+            for item in sorted(selected, key=lambda item: (item[0], item[1].get("score", 0.0)), reverse=True)
+        ]
+        return _cap_frames_with_phase_spread(selected_frames, max_frames)
 
     fallback = []
     for base in sorted(evidence_frames, key=lambda frame: frame.get("score", 0.0), reverse=True)[:max_frames]:
@@ -2779,9 +2782,12 @@ def _pick_verdict_frames(visual_result: dict) -> list[dict]:
                 "timestamp": base.get("timestamp", ""),
                 "local_path": base["local_path"],
                 "reason": base.get("selection_reason", "selected for temporal coverage"),
+                "phase_bucket": base.get("phase_bucket") or _selection_phase(base.get("selection_reason", "")),
+                "weight": 0,
+                "score": base.get("score", 0.0),
             }
         )
-    return fallback
+    return _cap_frames_with_phase_spread(fallback, max_frames)
 
 
 def _build_verdict_prompt(
@@ -2791,6 +2797,9 @@ def _build_verdict_prompt(
     advisory: dict | None = None,
     matched_rules: list[dict] | None = None,
     matched_rules_by_issue: dict | None = None,
+    officiating_issue_summary: str | None = None,
+    key_events: list[dict] | None = None,
+    possible_critical_moments: list[dict] | None = None,
     issue_cards: list[dict] | None = None,
     contact_points: list[dict] | None = None,
     primary_issue: str | None = None,
@@ -2804,9 +2813,33 @@ def _build_verdict_prompt(
     lines.append(video_summary.strip())
     lines.append('"""')
     lines.append("")
+    if officiating_issue_summary:
+        lines.append("Agent 1 neutral officiating issue summary:")
+        lines.append(str(officiating_issue_summary).strip())
+        lines.append("")
     lines.append(f'Original call: "{(original_call or "").strip() or "Unknown"}"')
     if primary_issue:
         lines.append(f'Primary issue from Agent 1: "{primary_issue}"')
+    if key_events:
+        lines.append("")
+        lines.append("Frame-bound key events from Agent 1:")
+        for event in key_events[:10]:
+            if not isinstance(event, dict):
+                continue
+            lines.append(
+                f'- {event.get("frame_id", "")} at {event.get("timestamp", "")}: '
+                f'{event.get("description", "")}'
+            )
+    if possible_critical_moments:
+        lines.append("")
+        lines.append("Possible critical moments from Agent 1:")
+        for moment in possible_critical_moments[:10]:
+            if not isinstance(moment, dict):
+                continue
+            lines.append(
+                f'- {moment.get("frame_id", "")} at {moment.get("timestamp", "")}: '
+                f'{moment.get("description", "")} Why relevant: {moment.get("why_relevant", "")}.'
+            )
     if role_context:
         lines.append("")
         lines.append("Role context from Agent 1:")
@@ -2899,8 +2932,6 @@ def _build_verdict_prompt(
             lines.append(f"- verdict_readiness: {readiness}")
         if "can_reason_about_call" in advisory:
             lines.append(f"- can_reason_about_call: {bool(advisory.get('can_reason_about_call'))}")
-        if "possible_replay_duplicate" in advisory:
-            lines.append(f"- possible_replay_duplicate: {bool(advisory.get('possible_replay_duplicate'))}")
         sequence = advisory.get("sequence_interpretation")
         if sequence:
             lines.append(f"- sequence_interpretation: {sequence}")
@@ -3028,6 +3059,13 @@ def _apply_verdict_payload(
     )
     result["key_factors"] = _normalize_verdict_factors(payload.get("key_factors"), frame_id_map)
     result["rule_basis"] = str(payload.get("rule_basis", "")).strip()[:500]
+    result["relevant_rules_used"] = _normalize_relevant_rules_used(
+        payload.get("relevant_rules_used"), matched_rules_by_issue, result["issue_analysis"]
+    )
+    if result["relevant_rules_used"] and not result["rule_basis"]:
+        first_rule = result["relevant_rules_used"][0]
+        rule_name = first_rule.get("section") or first_rule.get("rule_id") or "retrieved rule"
+        result["rule_basis"] = f"{rule_name}: {first_rule.get('why_relevant', '')}"[:500]
     raw_limitations = payload.get("limitations") or []
     result["limitations"] = [
         str(item).strip()[:220] for item in raw_limitations[:6] if str(item).strip()
@@ -3071,10 +3109,10 @@ def run_verdict_agent(visual_result: dict) -> dict:
         _apply_verdict_skipped(result, "No video_summary available.")
         return result
 
-    matched_rules_by_issue = retrieve_rules_for_issues(visual_result)
+    matched_rules_by_issue = _cap_grouped_rules_total(retrieve_rules_for_issues(visual_result), max_rules=3)
     matched_rules = _dedupe_rules(
         [rule for rules in matched_rules_by_issue.values() for rule in rules]
-    )[:10]
+    )[:3]
     result["matched_rules"] = matched_rules
     result["matched_rules_by_issue"] = matched_rules_by_issue
 
@@ -3091,7 +3129,6 @@ def run_verdict_agent(visual_result: dict) -> dict:
     advisory = {
         "verdict_readiness": visual_result.get("verdict_readiness"),
         "can_reason_about_call": visual_result.get("can_reason_about_call"),
-        "possible_replay_duplicate": visual_result.get("possible_replay_duplicate"),
         "sequence_interpretation": visual_result.get("sequence_interpretation"),
         "confidence_in_visual_description": visual_result.get("confidence_in_visual_description"),
         "possible_high_contact": visual_result.get("possible_high_contact"),
@@ -3105,6 +3142,9 @@ def run_verdict_agent(visual_result: dict) -> dict:
         advisory=advisory,
         matched_rules=matched_rules,
         matched_rules_by_issue=matched_rules_by_issue,
+        officiating_issue_summary=visual_result.get("officiating_issue_summary"),
+        key_events=visual_result.get("key_events") or [],
+        possible_critical_moments=visual_result.get("possible_critical_moments") or [],
         issue_cards=visual_result.get("issue_cards") or [],
         contact_points=visual_result.get("contact_points") or [],
         primary_issue=visual_result.get("primary_issue"),

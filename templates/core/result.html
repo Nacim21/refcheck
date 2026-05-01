@@ -113,10 +113,6 @@
                 <dt class="font-semibold text-slate-700">Can reason about call</dt>
                 <dd class="text-slate-700">{% if upload_result.analysis.can_reason_about_call %}Yes{% else %}No{% endif %}</dd>
             </div>
-            <div>
-                <dt class="font-semibold text-slate-700">Possible replay duplicate</dt>
-                <dd class="text-slate-700">{% if upload_result.analysis.possible_replay_duplicate %}Yes{% else %}No{% endif %}</dd>
-            </div>
         </dl>
         <div class="mt-4">
             <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Sequence interpretation</h3>
@@ -180,6 +176,20 @@
         <div class="mt-4">
             <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Rule basis</h3>
             <p class="mt-2 text-sm text-slate-700">{{ upload_result.analysis.verdict.rule_basis }}</p>
+        </div>
+        {% endif %}
+        {% if upload_result.analysis.verdict.relevant_rules_used %}
+        <div class="mt-4">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Rules cited by Agent 2</h3>
+            <ul class="mt-2 space-y-2 text-sm text-slate-700">
+                {% for rule in upload_result.analysis.verdict.relevant_rules_used %}
+                <li>
+                    <span class="font-semibold">{% if rule.section %}{{ rule.section }}{% else %}{{ rule.rule_id }}{% endif %}</span>
+                    {% if rule.issue_id %}<span class="text-slate-500">({{ rule.issue_id }})</span>{% endif %}
+                    {% if rule.why_relevant %}<p class="mt-1 leading-6">{{ rule.why_relevant }}</p>{% endif %}
+                </li>
+                {% endfor %}
+            </ul>
         </div>
         {% endif %}
         {% if upload_result.analysis.verdict.matched_rules %}
