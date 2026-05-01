@@ -1,7 +1,69 @@
-from django.test import SimpleTestCase
+import json
+
+from django.test import SimpleTestCase, TestCase
+from django.urls import reverse
 from unittest.mock import patch
 
 from . import services
+
+
+class GcsUploadFlowTests(TestCase):
+    def test_create_upload_url_rejects_non_video_content_type(self):
+        response = self.client.post(
+            reverse("create_upload_url"),
+            data=json.dumps({"filename": "clip.txt", "content_type": "text/plain"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("errors", response.json())
+
+    @patch("core.views._generate_signed_upload_url", return_value="https://storage.example/upload")
+    def test_create_upload_url_returns_signed_url_and_gcs_path(self, mocked_signed_url):
+        response = self.client.post(
+            reverse("create_upload_url"),
+            data=json.dumps({"filename": "clip.mp4", "content_type": "video/mp4"}),
+            content_type="application/json",
+        )
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["upload_url"], "https://storage.example/upload")
+        self.assertRegex(payload["gcs_path"], r"^uploads/[a-f0-9]{32}\.mp4$")
+        mocked_signed_url.assert_called_once()
+
+    @patch("core.views._generate_signed_read_url", return_value="https://storage.example/read")
+    @patch("core.views._download_gcs_video_to_temp", return_value="C:/tmp/refcheck-test.mp4")
+    @patch("core.views.analyze_video_with_gemini")
+    def test_analyze_accepts_gcs_path_without_file_upload(self, mocked_analyze, mocked_download, _mocked_read_url):
+        mocked_analyze.return_value = {
+            "status": "Analyzed",
+            "metadata": {"duration_seconds": 8.0, "fps": 30.0, "total_frames": 240},
+        }
+
+        response = self.client.post(
+            reverse("home"),
+            data=json.dumps(
+                {
+                    "sport": "Basketball",
+                    "initial_call": "Goaltending",
+                    "video_gcs_path": "uploads/test.mp4",
+                    "file_size": 1024,
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["redirect_url"], reverse("result"))
+        mocked_download.assert_called_once_with("uploads/test.mp4")
+        mocked_analyze.assert_called_once_with(
+            video_path="C:/tmp/refcheck-test.mp4",
+            original_call="Goaltending",
+        )
+        upload_result = self.client.session["upload_result"]
+        self.assertEqual(upload_result["filename"], "uploads/test.mp4")
+        self.assertEqual(upload_result["video_url"], "https://storage.example/read")
 
 
 class VisualSeverityTriageTests(SimpleTestCase):

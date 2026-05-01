@@ -1,573 +1,378 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>RefCheck | Result</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+  .material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  }
+  .glass-panel {
+    background: rgba(45, 45, 46, 0.8);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  .soft-panel {
+    background: rgba(19, 19, 20, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  body {
+    background-color: #131314;
+    color: #e5e2e3;
+    font-family: 'Inter', sans-serif;
+  }
+</style>
+</head>
+<body class="overflow-x-hidden bg-[#131314] text-[#e5e2e3]">
+<header class="bg-[#2D2D2E]/80 backdrop-blur-2xl border-b border-white/10 flex justify-between items-center w-full px-6 h-16 fixed top-0 z-50">
+  <div class="flex items-center gap-8">
+    <a href="{% url 'home' %}#home" class="text-2xl font-black italic tracking-tighter text-[#CCFF00]" style="font-family:'Space Grotesk', sans-serif;">RefCheck</a>
+  </div>
+  <div class="flex items-center gap-4">
+    <a href="{% url 'home' %}#analyze" class="bg-[#CCFF00] text-black px-4 py-2 rounded-sm font-bold text-xs uppercase hover:opacity-90">Start Review</a>
+  </div>
+</header>
 
-{% block title %}RefCheck AI | Result{% endblock %}
+<aside class="hidden md:flex bg-[#1A1A1B] fixed left-0 top-16 h-[calc(100vh-64px)] w-[280px] border-r border-white/5 shadow-2xl flex-col py-4 gap-2 z-40">
+  <nav class="flex-grow flex flex-col gap-1 px-2">
+    <a href="{% url 'home' %}#home" class="text-slate-500 hover:text-[#CCFF00] rounded-sm flex items-center gap-3 px-4 py-3 font-['Space_Grotesk'] text-sm font-bold uppercase transition-colors">
+      <span class="material-symbols-outlined">home</span> Home
+    </a>
+    <a href="{% url 'home' %}#analyze" class="text-slate-500 hover:text-[#CCFF00] rounded-sm flex items-center gap-3 px-4 py-3 font-['Space_Grotesk'] text-sm font-bold uppercase transition-colors">
+      <span class="material-symbols-outlined">segment</span> Evidence Log
+    </a>
+    <a href="{% url 'result' %}" class="bg-[#CCFF00] text-black rounded-sm flex items-center gap-3 px-4 py-3 font-['Space_Grotesk'] text-sm font-bold uppercase">
+      <span class="material-symbols-outlined">videocam</span> Live Feed
+    </a>
+  </nav>
+</aside>
 
-{% block content %}
-<section class="mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white p-8">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-        <h1 class="text-2xl font-bold tracking-tight text-slate-900">Video Analysis Result</h1>
-    </div>
+<main class="md:ml-[280px] mt-16 min-h-[calc(100vh-64px)] bg-[#131314] p-4 md:p-6">
+  <div class="mx-auto max-w-7xl space-y-6">
+    <section class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-[0.28em] text-[#CCFF00]">Live Feed</p>
+        <h1 class="mt-2 text-4xl md:text-5xl text-white uppercase" style="font-family:'Space Grotesk', sans-serif;">Review Result</h1>
+        <p class="mt-2 max-w-2xl text-sm text-slate-400">Structured outcome from the latest analyzed clip.</p>
+      </div>
+      <a href="{% url 'home' %}#analyze" class="inline-flex w-fit items-center gap-2 rounded-sm bg-[#CCFF00] px-5 py-3 text-xs font-bold uppercase text-black hover:opacity-90">
+        <span class="material-symbols-outlined text-base">add</span>
+        Analyze another clip
+      </a>
+    </section>
 
     {% if upload_result %}
-    <div class="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-5">
-        <h2 class="text-sm font-semibold uppercase tracking-wide text-emerald-800">Upload successful</h2>
-        <div class="mt-3">
-            <video controls class="w-full rounded-lg border border-slate-200 bg-black">
-                <source src="{{ upload_result.video_url }}">
-                Your browser does not support the video tag.
-            </video>
+    <section class="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
+      <div class="glass-panel overflow-hidden rounded-lg">
+        <div class="relative bg-black">
+          <video controls class="aspect-video w-full bg-black object-contain">
+            <source src="{{ upload_result.video_url }}">
+            Your browser does not support the video tag.
+          </video>
+          <div class="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/70 to-transparent"></div>
         </div>
-        <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-            <div>
-                <dt class="font-semibold text-slate-700">Original call</dt>
-                <dd class="text-slate-700">{{ upload_result.original_call }}</dd>
-            </div>
-            <div>
-                <dt class="font-semibold text-slate-700">Sport</dt>
-                <dd class="text-slate-700">{{ upload_result.sport }}</dd>
-            </div>
-            <div>
-                <dt class="font-semibold text-slate-700">Filename</dt>
-                <dd class="text-slate-700">{{ upload_result.filename }}</dd>
-            </div>
-            <div>
-                <dt class="font-semibold text-slate-700">File size</dt>
-                <dd class="text-slate-700">{{ upload_result.file_size }}</dd>
-            </div>
-        </dl>
-    </div>
+        <div class="grid gap-3 p-5 text-sm sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <dt class="text-[10px] font-bold uppercase tracking-widest text-slate-500">Original call</dt>
+            <dd class="mt-1 text-slate-100">{{ upload_result.original_call|default:"Not provided" }}</dd>
+          </div>
+          <div>
+            <dt class="text-[10px] font-bold uppercase tracking-widest text-slate-500">Sport</dt>
+            <dd class="mt-1 text-slate-100">{{ upload_result.sport|default:"Basketball" }}</dd>
+          </div>
+          <div>
+            <dt class="text-[10px] font-bold uppercase tracking-widest text-slate-500">File size</dt>
+            <dd class="mt-1 text-slate-100">{{ upload_result.file_size|default:"Not available" }}</dd>
+          </div>
+          <div>
+            <dt class="text-[10px] font-bold uppercase tracking-widest text-slate-500">Filename</dt>
+            <dd class="mt-1 break-all text-slate-100">{{ upload_result.filename|default:"Uploaded clip" }}</dd>
+          </div>
+        </div>
+      </div>
 
-    <div class="mt-6 rounded-xl border border-slate-200 p-5">
+      <div class="glass-panel rounded-lg p-6">
         <div class="flex flex-wrap items-center justify-between gap-3">
-            <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-600">Analysis status</h2>
-            {% if upload_result.analysis_status == "Analyzed" %}
-            <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">{{ upload_result.analysis_status_label }}</span>
-            {% elif upload_result.analysis_status == "Partial" %}
-            <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">{{ upload_result.analysis_status_label }}</span>
-            {% else %}
-            <span class="rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-800">{{ upload_result.analysis_status_label }}</span>
-            {% endif %}
+          <h2 class="text-sm font-semibold uppercase tracking-widest text-slate-400">Analysis Status</h2>
+          {% if upload_result.analysis_status == "Analyzed" %}
+          <span class="rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-bold uppercase tracking-wide text-emerald-300">{{ upload_result.analysis_status_label }}</span>
+          {% elif upload_result.analysis_status == "Partial" %}
+          <span class="rounded-full bg-amber-500/20 px-3 py-1 text-xs font-bold uppercase tracking-wide text-amber-300">{{ upload_result.analysis_status_label }}</span>
+          {% else %}
+          <span class="rounded-full bg-red-500/20 px-3 py-1 text-xs font-bold uppercase tracking-wide text-red-300">{{ upload_result.analysis_status_label }}</span>
+          {% endif %}
         </div>
-        <p class="mt-3 text-sm text-slate-700">{{ upload_result.analysis_status_message }}</p>
-        <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-            <div>
-                <dt class="font-semibold text-slate-700">Started</dt>
-                <dd class="text-slate-700">{{ upload_result.analysis_started_at }}</dd>
-            </div>
-            <div>
-                <dt class="font-semibold text-slate-700">Finished</dt>
-                <dd class="text-slate-700">{{ upload_result.analysis_finished_at }}</dd>
-            </div>
-            <div>
-                <dt class="font-semibold text-slate-700">Duration</dt>
-                <dd class="text-slate-700">
-                    {% if upload_result.analysis.metadata.duration_seconds %}
-                    {{ upload_result.analysis.metadata.duration_seconds }} s
-                    {% else %}
-                    Not available
-                    {% endif %}
-                </dd>
-            </div>
-            <div>
-                <dt class="font-semibold text-slate-700">FPS</dt>
-                <dd class="text-slate-700">{{ upload_result.analysis.metadata.fps|default:"Not available" }}</dd>
-            </div>
-            <div>
-                <dt class="font-semibold text-slate-700">Total frames</dt>
-                <dd class="text-slate-700">{{ upload_result.analysis.metadata.total_frames|default:"Not available" }}</dd>
-            </div>
-            <div>
-                <dt class="font-semibold text-slate-700">Resolution</dt>
-                <dd class="text-slate-700">
-                    {% if upload_result.analysis.metadata.width and upload_result.analysis.metadata.height %}
-                    {{ upload_result.analysis.metadata.width }} x {{ upload_result.analysis.metadata.height }}
-                    {% else %}
-                    Not available
-                    {% endif %}
-                </dd>
-            </div>
-        </dl>
-    </div>
+        <p class="mt-4 text-sm leading-6 text-slate-300">{{ upload_result.analysis_status_message }}</p>
 
-    <div class="mt-6 rounded-xl border border-slate-200 p-5">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-            <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-600">Evidence Quality</h2>
-            {% if upload_result.analysis.visual_frame_quality == "Good" %}
-            <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">{{ upload_result.analysis.visual_frame_quality }}</span>
-            {% elif upload_result.analysis.visual_frame_quality == "Limited" %}
-            <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">{{ upload_result.analysis.visual_frame_quality }}</span>
-            {% else %}
-            <span class="rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-800">{{ upload_result.analysis.visual_frame_quality|default:"Poor" }}</span>
-            {% endif %}
-        </div>
-        <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-            <div>
-                <dt class="font-semibold text-slate-700">Visual frame quality</dt>
-                <dd class="text-slate-700">{{ upload_result.analysis.visual_frame_quality|default:"Poor" }}</dd>
-            </div>
-            <div>
-                <dt class="font-semibold text-slate-700">Verdict readiness</dt>
-                <dd class="text-slate-700">{{ upload_result.analysis.verdict_readiness|default:"Not Ready" }}</dd>
-            </div>
-            <div>
-                <dt class="font-semibold text-slate-700">Can reason about call</dt>
-                <dd class="text-slate-700">{% if upload_result.analysis.can_reason_about_call %}Yes{% else %}No{% endif %}</dd>
-            </div>
+        <dl class="mt-6 grid grid-cols-2 gap-4 text-sm">
+          <div class="soft-panel rounded-lg p-3">
+            <dt class="text-[10px] font-bold uppercase tracking-widest text-slate-500">Verdict</dt>
+            <dd class="mt-1 text-slate-100">{% if upload_result.analysis.verdict.verdict %}{{ upload_result.analysis.verdict.verdict }}{% else %}Pending{% endif %}</dd>
+          </div>
+          <div class="soft-panel rounded-lg p-3">
+            <dt class="text-[10px] font-bold uppercase tracking-widest text-slate-500">Confidence</dt>
+            <dd class="mt-1 text-slate-100">{% if upload_result.analysis.verdict.confidence %}{{ upload_result.analysis.verdict.confidence }}{% else %}{{ upload_result.analysis.confidence_in_visual_description|default:"N/A" }}{% endif %}</dd>
+          </div>
+          <div class="soft-panel rounded-lg p-3">
+            <dt class="text-[10px] font-bold uppercase tracking-widest text-slate-500">Duration</dt>
+            <dd class="mt-1 text-slate-100">{% if upload_result.analysis.metadata.duration_seconds %}{{ upload_result.analysis.metadata.duration_seconds }} s{% else %}N/A{% endif %}</dd>
+          </div>
+          <div class="soft-panel rounded-lg p-3">
+            <dt class="text-[10px] font-bold uppercase tracking-widest text-slate-500">FPS / Frames</dt>
+            <dd class="mt-1 text-slate-100">{{ upload_result.analysis.metadata.fps|default:"N/A" }} / {{ upload_result.analysis.metadata.total_frames|default:"N/A" }}</dd>
+          </div>
+          <div class="soft-panel rounded-lg p-3">
+            <dt class="text-[10px] font-bold uppercase tracking-widest text-slate-500">Resolution</dt>
+            <dd class="mt-1 text-slate-100">
+              {% if upload_result.analysis.metadata.width and upload_result.analysis.metadata.height %}
+              {{ upload_result.analysis.metadata.width }} x {{ upload_result.analysis.metadata.height }}
+              {% else %}N/A{% endif %}
+            </dd>
+          </div>
+          <div class="soft-panel rounded-lg p-3">
+            <dt class="text-[10px] font-bold uppercase tracking-widest text-slate-500">Readiness</dt>
+            <dd class="mt-1 text-slate-100">{{ upload_result.analysis.verdict_readiness|default:"Not Ready" }}</dd>
+          </div>
         </dl>
-        <div class="mt-4">
-            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Sequence interpretation</h3>
-            <p class="mt-2 text-sm text-slate-700">
-                {{ upload_result.analysis.sequence_interpretation|default:"unclear" }} - {{ upload_result.analysis.sequence_interpretation_reason|default:"Not available." }}
-            </p>
-        </div>
-        <div class="mt-4">
-            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Visual sequence summary for review</h3>
-            <p class="mt-2 text-sm text-slate-700">
-                {{ upload_result.analysis.officiating_issue_summary|default:"Not available." }}
-            </p>
-        </div>
-        <div class="mt-4">
-            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Missing evidence</h3>
-            {% if upload_result.analysis.missing_evidence %}
-            <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
-                {% for item in upload_result.analysis.missing_evidence %}
-                <li>{{ item }}</li>
-                {% endfor %}
-            </ul>
-            {% else %}
-            <p class="mt-2 text-sm text-slate-600">No missing evidence details were returned.</p>
-            {% endif %}
-        </div>
-    </div>
+      </div>
+    </section>
 
     {% if upload_result.analysis.verdict %}
-    <div class="mt-6 rounded-xl border-2 border-slate-300 bg-slate-50 p-5 shadow-sm">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-            <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-600">Verdict (Agent 2)</h2>
-            {% if upload_result.analysis.verdict.status == "Analyzed" %}
-                {% if upload_result.analysis.verdict.verdict == "Fair Call" %}
-                <span class="rounded-full bg-emerald-100 px-4 py-1 text-sm font-semibold text-emerald-800">{{ upload_result.analysis.verdict.verdict }}</span>
-                {% elif upload_result.analysis.verdict.verdict == "Bad Call" %}
-                <span class="rounded-full bg-rose-100 px-4 py-1 text-sm font-semibold text-rose-800">{{ upload_result.analysis.verdict.verdict }}</span>
-                {% else %}
-                <span class="rounded-full bg-amber-100 px-4 py-1 text-sm font-semibold text-amber-800">{{ upload_result.analysis.verdict.verdict }}</span>
-                {% endif %}
-            {% else %}
-            <span class="rounded-full bg-slate-200 px-4 py-1 text-sm font-semibold text-slate-700">{{ upload_result.analysis.verdict.status|default:"Unavailable" }}</span>
-            {% endif %}
-        </div>
-
+    <section class="glass-panel rounded-lg p-6">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h2 class="text-sm font-semibold uppercase tracking-widest text-slate-400">Decision</h2>
         {% if upload_result.analysis.verdict.status == "Analyzed" %}
-        <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-            <div>
-                <dt class="font-semibold text-slate-700">Verdict</dt>
-                <dd class="text-slate-700">{{ upload_result.analysis.verdict.verdict }}</dd>
-            </div>
-            <div>
-                <dt class="font-semibold text-slate-700">Confidence</dt>
-                <dd class="text-slate-700">{{ upload_result.analysis.verdict.confidence|default:"Low" }}</dd>
-            </div>
-        </dl>
-        <div class="mt-4">
-            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Reasoning</h3>
-            <p class="mt-2 text-sm leading-6 text-slate-700">{{ upload_result.analysis.verdict.reasoning|default:"Not available." }}</p>
+          {% if upload_result.analysis.verdict.verdict == "Fair Call" %}
+          <span class="rounded-full bg-emerald-500/20 px-4 py-1 text-sm font-bold text-emerald-300">{{ upload_result.analysis.verdict.verdict }}</span>
+          {% elif upload_result.analysis.verdict.verdict == "Bad Call" %}
+          <span class="rounded-full bg-red-500/20 px-4 py-1 text-sm font-bold text-red-300">{{ upload_result.analysis.verdict.verdict }}</span>
+          {% else %}
+          <span class="rounded-full bg-amber-500/20 px-4 py-1 text-sm font-bold text-amber-300">{{ upload_result.analysis.verdict.verdict }}</span>
+          {% endif %}
+        {% else %}
+        <span class="rounded-full bg-white/10 px-4 py-1 text-sm font-bold text-slate-300">{{ upload_result.analysis.verdict.status|default:"Unavailable" }}</span>
+        {% endif %}
+      </div>
+
+      {% if upload_result.analysis.verdict.status == "Analyzed" %}
+      <div class="mt-5 grid gap-4 sm:grid-cols-2">
+        <div class="soft-panel rounded-lg p-4">
+          <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500">Verdict</p>
+          <p class="mt-2 text-xl font-semibold text-white">{{ upload_result.analysis.verdict.verdict }}</p>
         </div>
+        <div class="soft-panel rounded-lg p-4">
+          <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500">Confidence</p>
+          <p class="mt-2 text-xl font-semibold text-white">{{ upload_result.analysis.verdict.confidence|default:"Low" }}</p>
+        </div>
+      </div>
+
+      <div class="mt-5 space-y-5 text-sm leading-7 text-slate-300">
+        <div>
+          <h3 class="text-xs font-bold uppercase tracking-widest text-slate-500">Reasoning</h3>
+          <p class="mt-2">{% if upload_result.analysis.verdict.selected_call_reasoning %}{{ upload_result.analysis.verdict.selected_call_reasoning }}{% else %}{{ upload_result.analysis.verdict.reasoning|default:"Not available." }}{% endif %}</p>
+        </div>
+
         {% if upload_result.analysis.verdict.rule_basis %}
-        <div class="mt-4">
-            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Rule basis</h3>
-            <p class="mt-2 text-sm text-slate-700">{{ upload_result.analysis.verdict.rule_basis }}</p>
+        <div>
+          <h3 class="text-xs font-bold uppercase tracking-widest text-slate-500">Rule Basis</h3>
+          <p class="mt-2">{{ upload_result.analysis.verdict.rule_basis }}</p>
         </div>
         {% endif %}
-        {% if upload_result.analysis.verdict.relevant_rules_used %}
-        <div class="mt-4">
-            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Rules cited by Agent 2</h3>
-            <ul class="mt-2 space-y-2 text-sm text-slate-700">
-                {% for rule in upload_result.analysis.verdict.relevant_rules_used %}
-                <li>
-                    <span class="font-semibold">{% if rule.section %}{{ rule.section }}{% else %}{{ rule.rule_id }}{% endif %}</span>
-                    {% if rule.issue_id %}<span class="text-slate-500">({{ rule.issue_id }})</span>{% endif %}
-                    {% if rule.why_relevant %}<p class="mt-1 leading-6">{{ rule.why_relevant }}</p>{% endif %}
-                </li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-        {% if upload_result.analysis.verdict.matched_rules %}
-        <div class="mt-4">
-            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Matched rulebook passages</h3>
-            <ul class="mt-2 space-y-2 text-sm text-slate-700">
-                {% for rule in upload_result.analysis.verdict.matched_rules %}
-                <li>
-                    <span class="font-semibold">{% if rule.section %}{{ rule.section }}{% else %}{{ rule.rule_id }}{% endif %}</span>
-                    <span class="text-slate-500">(score {{ rule.score|floatformat:3 }})</span>
-                    {% if rule.text %}<p class="mt-1 leading-6">{{ rule.text }}</p>{% endif %}
-                </li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-        {% if upload_result.analysis.verdict.matched_rules_by_issue %}
-        <div class="mt-4">
-            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Matched rules by issue</h3>
-            <div class="mt-2 space-y-3 text-sm text-slate-700">
-                {% for issue_id, rules in upload_result.analysis.verdict.matched_rules_by_issue.items %}
-                {% if rules %}
-                <div>
-                    <p class="font-semibold">{{ issue_id }}</p>
-                    <ul class="mt-1 space-y-1">
-                        {% for rule in rules %}
-                        <li>
-                            {% if rule.section %}{{ rule.section }}{% else %}{{ rule.rule_id }}{% endif %}
-                            <span class="text-slate-500">(score {{ rule.score|floatformat:3 }})</span>
-                        </li>
-                        {% endfor %}
-                    </ul>
-                </div>
-                {% endif %}
-                {% endfor %}
-            </div>
-        </div>
-        {% endif %}
-        {% if upload_result.analysis.verdict.key_factors %}
-        <div class="mt-4">
-            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Key factors</h3>
-            <ul class="mt-2 space-y-2 text-sm text-slate-700">
-                {% for factor in upload_result.analysis.verdict.key_factors %}
-                <li>{{ factor.frame_id }} at {{ factor.timestamp }} - {{ factor.factor }}</li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-        {% if upload_result.analysis.verdict.issue_analysis %}
-        <div class="mt-4">
-            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Issue analysis</h3>
-            <ul class="mt-2 space-y-2 text-sm text-slate-700">
-                {% for issue in upload_result.analysis.verdict.issue_analysis %}
-                <li>
-                    <span class="font-semibold">{{ issue.issue_id }} / {{ issue.issue_type }}</span>
-                    ({{ issue.confidence }}): {{ issue.finding }}
-                    {% if issue.relevant_frames %}<span class="text-slate-500">Frames: {{ issue.relevant_frames|join:", " }}</span>{% endif %}
-                </li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
+
         {% if upload_result.analysis.verdict.correct_ruling_if_any %}
-        <div class="mt-4">
-            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Suggested ruling</h3>
-            <p class="mt-2 text-sm text-slate-700">{{ upload_result.analysis.verdict.correct_ruling_if_any }}</p>
+        <div>
+          <h3 class="text-xs font-bold uppercase tracking-widest text-slate-500">Suggested Ruling</h3>
+          <p class="mt-2">{{ upload_result.analysis.verdict.correct_ruling_if_any }}</p>
         </div>
         {% endif %}
-        {% if upload_result.analysis.verdict.limitations %}
-        <div class="mt-4">
-            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Verdict limitations</h3>
-            <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
-                {% for item in upload_result.analysis.verdict.limitations %}
-                <li>{{ item }}</li>
-                {% endfor %}
-            </ul>
+
+        {% if upload_result.analysis.verdict.other_possible_issues %}
+        <div>
+          <h3 class="text-xs font-bold uppercase tracking-widest text-slate-500">Other Possible Issues</h3>
+          <ul class="mt-2 space-y-3">
+            {% for issue in upload_result.analysis.verdict.other_possible_issues %}
+            <li class="soft-panel rounded-lg p-3">
+              <p class="font-semibold text-slate-100">{{ issue.issue|default:"Possible issue" }}{% if issue.confidence %} <span class="text-slate-500">({{ issue.confidence }})</span>{% endif %}</p>
+              {% if issue.reason %}<p class="mt-1 text-slate-400">{{ issue.reason }}</p>{% endif %}
+            </li>
+            {% endfor %}
+          </ul>
         </div>
         {% endif %}
-        {% elif upload_result.analysis.verdict.status == "Skipped" %}
-        <p class="mt-4 text-sm text-slate-600">
-            Verdict skipped: {{ upload_result.analysis.verdict.skipped_reason|default:"preconditions not met." }}
-        </p>
-        {% else %}
-        <p class="mt-4 text-sm text-slate-600">
-            Verdict unavailable. {{ upload_result.analysis.verdict.error|default:"" }}
-        </p>
+
+        {% if upload_result.analysis.verdict.key_factors %}
+        <div>
+          <h3 class="text-xs font-bold uppercase tracking-widest text-slate-500">Key Factors</h3>
+          <ul class="mt-2 space-y-2">
+            {% for factor in upload_result.analysis.verdict.key_factors %}
+            <li>{{ factor.frame_id }} at {{ factor.timestamp }} - {{ factor.factor }}</li>
+            {% endfor %}
+          </ul>
+        </div>
         {% endif %}
-    </div>
+      </div>
+      {% elif upload_result.analysis.verdict.status == "Skipped" %}
+      <p class="mt-4 text-sm text-slate-300">Verdict skipped: {{ upload_result.analysis.verdict.skipped_reason|default:"preconditions not met." }}</p>
+      {% else %}
+      <p class="mt-4 text-sm text-slate-300">Verdict unavailable. {{ upload_result.analysis.verdict.error|default:"" }}</p>
+      {% endif %}
+    </section>
     {% endif %}
 
-    <div class="mt-6 rounded-xl border border-slate-200 p-5">
-        <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-600">Visual Analyst Report</h2>
-        <dl class="mt-3 grid gap-3 text-sm sm:grid-cols-2">
-            <div>
-                <dt class="font-semibold text-slate-700">Agent</dt>
-                <dd class="text-slate-700">{{ upload_result.analysis.agent|default:"visual_analyst" }}</dd>
-            </div>
-            <div>
-                <dt class="font-semibold text-slate-700">Visible call type</dt>
-                <dd class="text-slate-700">{{ upload_result.analysis.visible_call_type|default:"unclear" }}</dd>
-            </div>
+    <section class="grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
+      <div class="glass-panel rounded-lg p-6">
+        <h2 class="text-sm font-semibold uppercase tracking-widest text-slate-400">Evidence Quality</h2>
+        <dl class="mt-5 grid gap-4 text-sm">
+          <div class="soft-panel rounded-lg p-4">
+            <dt class="text-[10px] font-bold uppercase tracking-widest text-slate-500">Visual frame quality</dt>
+            <dd class="mt-1 text-slate-100">{{ upload_result.analysis.visual_frame_quality|default:"Poor" }}</dd>
+          </div>
+          <div class="soft-panel rounded-lg p-4">
+            <dt class="text-[10px] font-bold uppercase tracking-widest text-slate-500">Can reason about call</dt>
+            <dd class="mt-1 text-slate-100">{% if upload_result.analysis.can_reason_about_call %}Yes{% else %}No{% endif %}</dd>
+          </div>
+          <div class="soft-panel rounded-lg p-4">
+            <dt class="text-[10px] font-bold uppercase tracking-widest text-slate-500">Sequence</dt>
+            <dd class="mt-1 text-slate-100">{{ upload_result.analysis.sequence_interpretation|default:"unclear" }}</dd>
+            {% if upload_result.analysis.sequence_interpretation_reason %}
+            <dd class="mt-2 text-xs leading-5 text-slate-400">{{ upload_result.analysis.sequence_interpretation_reason }}</dd>
+            {% endif %}
+          </div>
         </dl>
-        <div class="mt-4">
-            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Possible call types</h3>
-            {% if upload_result.analysis.possible_call_types %}
-            <p class="mt-2 text-sm text-slate-700">{{ upload_result.analysis.possible_call_types|join:", " }}</p>
-            {% else %}
-            <p class="mt-2 text-sm text-slate-600">No possible call types were returned.</p>
-            {% endif %}
-        </div>
-        <div class="mt-4">
-            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Visible call type reason</h3>
-            <p class="mt-2 text-sm text-slate-700">
-                {{ upload_result.analysis.visible_call_type_reason|default:"Not available." }}
-            </p>
-        </div>
-    </div>
+      </div>
 
-    {% if upload_result.analysis.primary_event or upload_result.analysis.all_events_detected or upload_result.analysis.possible_high_contact or upload_result.analysis.contact_points or upload_result.analysis.issue_cards %}
-    <div class="mt-6 rounded-xl border border-slate-200 p-5">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-            <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-600">Issue framing</h2>
-            {% if upload_result.analysis.primary_event %}
-            <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                Primary event: {{ upload_result.analysis.primary_event.tier|default:"Tier D" }}
-            </span>
-            {% endif %}
-            {% if upload_result.analysis.possible_high_contact %}
-            <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
-                Possible high contact: {{ upload_result.analysis.high_contact_confidence|default:"Low" }}
-            </span>
-            {% endif %}
-        </div>
-        {% if upload_result.analysis.primary_event %}
-        <div class="mt-3 text-sm text-slate-700">
-            <p class="font-semibold">Primary event at {{ upload_result.analysis.primary_event.timestamp|default:"unknown time" }}</p>
-            <p class="mt-1">{{ upload_result.analysis.primary_event.description }}</p>
-            {% if upload_result.analysis.primary_event.why_this_is_primary %}
-            <p class="mt-1 text-slate-600">{{ upload_result.analysis.primary_event.why_this_is_primary }}</p>
-            {% endif %}
+      <div class="glass-panel rounded-lg p-6">
+        <h2 class="text-sm font-semibold uppercase tracking-widest text-slate-400">Sequence Summary</h2>
+        <p class="mt-4 text-sm leading-7 text-slate-300">
+          {% if upload_result.analysis.officiating_issue_summary %}
+          {{ upload_result.analysis.officiating_issue_summary }}
+          {% elif upload_result.analysis.video_summary %}
+          {{ upload_result.analysis.video_summary }}
+          {% else %}
+          No sequence summary was returned.
+          {% endif %}
+        </p>
+        {% if upload_result.analysis.missing_evidence %}
+        <div class="mt-5">
+          <h3 class="text-xs font-bold uppercase tracking-widest text-slate-500">Missing Evidence</h3>
+          <ul class="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-slate-300">
+            {% for item in upload_result.analysis.missing_evidence %}
+            <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
         </div>
         {% endif %}
-        {% if upload_result.analysis.all_events_detected %}
-        <div class="mt-4">
-            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">All events detected</h3>
-            <ul class="mt-2 space-y-2 text-sm text-slate-700">
-                {% for event in upload_result.analysis.all_events_detected %}
-                <li>
-                    <span class="font-semibold">{{ event.tier }}</span>
-                    at {{ event.timestamp|default:"unknown time" }}: {{ event.brief_description }}
-                </li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-        {% if upload_result.analysis.high_contact_description %}
-        <p class="mt-3 text-sm text-slate-700">{{ upload_result.analysis.high_contact_description }}</p>
-        {% endif %}
-        {% if upload_result.analysis.contact_points %}
-        <div class="mt-4">
-            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Contact points</h3>
-            <ul class="mt-2 space-y-2 text-sm text-slate-700">
-                {% for contact in upload_result.analysis.contact_points %}
-                <li>
-                    {{ contact.frame_id }} at {{ contact.timestamp }} -
-                    {{ contact.contact_type }} toward {{ contact.target_body_area }}
-                    ({{ contact.confidence }}): {{ contact.description }}
-                </li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-        {% if upload_result.analysis.issue_cards %}
-        <div class="mt-4">
-            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Issue cards</h3>
-            <ul class="mt-2 space-y-2 text-sm text-slate-700">
-                {% for issue in upload_result.analysis.issue_cards %}
-                <li>
-                    <span class="font-semibold">{{ issue.issue_id }} / {{ issue.issue_type }}</span>
-                    ({{ issue.confidence }}): {{ issue.description }}
-                </li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-    </div>
+      </div>
+    </section>
+
+    {% if upload_result.analysis.key_events or upload_result.analysis.possible_critical_moments %}
+    <section class="grid gap-6 lg:grid-cols-2">
+      {% if upload_result.analysis.key_events %}
+      <div class="glass-panel rounded-lg p-6">
+        <h2 class="text-sm font-semibold uppercase tracking-widest text-slate-400">Key Timeline</h2>
+        <ol class="mt-4 space-y-4 text-sm text-slate-300">
+          {% for event in upload_result.analysis.key_events %}
+          <li class="flex gap-4">
+            <div class="flex flex-col items-center">
+              <span class="mt-2 h-2 w-2 rounded-full bg-[#CCFF00] shadow-[0_0_8px_#CCFF00]"></span>
+              {% if not forloop.last %}<span class="mt-2 h-full min-h-8 w-px bg-white/10"></span>{% endif %}
+            </div>
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ event.timestamp }}{% if event.frame_id %} / {{ event.frame_id }}{% endif %}</p>
+              <p class="mt-1 leading-6 text-slate-200">{{ event.description }}</p>
+            </div>
+          </li>
+          {% endfor %}
+        </ol>
+      </div>
+      {% endif %}
+
+      {% if upload_result.analysis.possible_critical_moments %}
+      <div class="glass-panel rounded-lg p-6">
+        <h2 class="text-sm font-semibold uppercase tracking-widest text-slate-400">Possible Critical Moments</h2>
+        <ul class="mt-4 space-y-3 text-sm text-slate-300">
+          {% for moment in upload_result.analysis.possible_critical_moments %}
+          <li class="soft-panel rounded-lg p-4">
+            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ moment.timestamp }}{% if moment.frame_id %} / {{ moment.frame_id }}{% endif %}</p>
+            <p class="mt-2 leading-6 text-slate-200">{{ moment.description }}</p>
+            {% if moment.why_relevant %}<p class="mt-2 text-xs leading-5 text-slate-500">{{ moment.why_relevant }}</p>{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+    </section>
     {% endif %}
 
-    {% if upload_result.analysis.video_summary %}
-    <div class="mt-6 rounded-xl border border-slate-200 p-5">
-        <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-600">Video summary</h2>
-        <p class="mt-3 text-sm leading-6 text-slate-700">{{ upload_result.analysis.video_summary }}</p>
-        {% if upload_result.analysis.evidence_selection_summary %}
-        <p class="mt-3 text-xs text-slate-500">{{ upload_result.analysis.evidence_selection_summary }}</p>
-        {% endif %}
-    </div>
+    {% if upload_result.analysis.verdict.relevant_rules_used or upload_result.analysis.verdict.matched_rules %}
+    <section class="glass-panel rounded-lg p-6">
+      <h2 class="text-sm font-semibold uppercase tracking-widest text-slate-400">Rules Referenced</h2>
+      {% if upload_result.analysis.verdict.relevant_rules_used %}
+      <div class="mt-4 grid gap-3 lg:grid-cols-2">
+        {% for rule in upload_result.analysis.verdict.relevant_rules_used %}
+        <div class="soft-panel rounded-lg p-4 text-sm">
+          <p class="font-semibold text-slate-100">{% if rule.section %}{{ rule.section }}{% else %}{{ rule.rule_id }}{% endif %}</p>
+          {% if rule.why_relevant %}<p class="mt-2 leading-6 text-slate-400">{{ rule.why_relevant }}</p>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% elif upload_result.analysis.verdict.matched_rules %}
+      <div class="mt-4 grid gap-3 lg:grid-cols-2">
+        {% for rule in upload_result.analysis.verdict.matched_rules %}
+        <div class="soft-panel rounded-lg p-4 text-sm">
+          <p class="font-semibold text-slate-100">{% if rule.section %}{{ rule.section }}{% else %}{{ rule.rule_id }}{% endif %}</p>
+          {% if rule.text %}<p class="mt-2 leading-6 text-slate-400">{{ rule.text }}</p>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </section>
     {% endif %}
-
-    <div class="mt-6 rounded-xl border border-slate-200 p-5">
-        <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-600">Confidence in visual description</h2>
-        <p class="mt-2 text-sm text-slate-700">{{ upload_result.analysis.confidence_in_visual_description }}</p>
-    </div>
-
-    <div class="mt-6 rounded-xl border border-slate-200 p-5">
-        <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-600">AI-generated key events</h2>
-        {% if upload_result.analysis.key_events %}
-        <ul class="mt-3 space-y-2 text-sm text-slate-700">
-            {% for event in upload_result.analysis.key_events %}
-            <li>{{ event.timestamp }} ({{ event.frame_id }}) - {{ event.description }}</li>
-            {% endfor %}
-        </ul>
-        {% else %}
-        <p class="mt-3 text-sm text-slate-600">No key events were returned.</p>
-        {% endif %}
-    </div>
-
-    {% if upload_result.analysis.possible_critical_moments %}
-    <div class="mt-6 rounded-xl border border-slate-200 p-5">
-        <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-600">Possible critical moments</h2>
-        <ul class="mt-3 space-y-2 text-sm text-slate-700">
-            {% for moment in upload_result.analysis.possible_critical_moments %}
-            <li>{{ moment.timestamp }} ({{ moment.frame_id }}) - {{ moment.description }} ({{ moment.why_relevant }})</li>
-            {% endfor %}
-        </ul>
-    </div>
-    {% endif %}
-
-    {% if upload_result.analysis.recommended_frames_for_verdict_agent %}
-    <div class="mt-6 rounded-xl border border-slate-200 p-5">
-        <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-600">Recommended Frames for Verdict Agent</h2>
-        <ul class="mt-3 space-y-2 text-sm text-slate-700">
-            {% for item in upload_result.analysis.recommended_frames_for_verdict_agent %}
-            <li>{{ item.frame_id }} at {{ item.timestamp }} - {{ item.reason }}</li>
-            {% endfor %}
-        </ul>
-    </div>
-    {% endif %}
-
-    <div class="mt-6 rounded-xl border border-slate-200 p-5">
-        <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-600">AI-generated limitations</h2>
-        {% if upload_result.analysis.limitations %}
-        <ul class="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-700">
-            {% for limitation in upload_result.analysis.limitations %}
-            <li>{{ limitation }}</li>
-            {% endfor %}
-        </ul>
-        {% else %}
-        <p class="mt-3 text-sm text-slate-600">No limitations were returned.</p>
-        {% endif %}
-    </div>
 
     {% if upload_result.analysis.error %}
-    <div class="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-5">
-        <h2 class="text-sm font-semibold uppercase tracking-wide text-amber-800">AI warning</h2>
-        <p class="mt-2 text-sm text-amber-800">{{ upload_result.analysis.error }}</p>
-    </div>
-    {% endif %}
-
-    {% if debug_enabled and upload_result.analysis.debug %}
-    <div class="mt-6 rounded-xl border border-slate-300 bg-slate-50 p-5">
-        <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-700">Developer diagnostics (DEBUG)</h2>
-        <dl class="mt-3 grid gap-3 text-xs sm:grid-cols-2">
-            <div>
-                <dt class="font-semibold text-slate-600">Model used</dt>
-                <dd class="text-slate-700">{{ upload_result.analysis.debug.model_used }}</dd>
-            </div>
-            <div>
-                <dt class="font-semibold text-slate-600">Frames extracted</dt>
-                <dd class="text-slate-700">{{ upload_result.analysis.debug.frames_extracted_count }}</dd>
-            </div>
-            <div>
-                <dt class="font-semibold text-slate-600">Selected evidence</dt>
-                <dd class="text-slate-700">{{ upload_result.analysis.debug.selected_evidence_count }}</dd>
-            </div>
-            <div>
-                <dt class="font-semibold text-slate-600">Candidates scanned</dt>
-                <dd class="text-slate-700">{{ upload_result.analysis.debug.candidates_scanned_count }}</dd>
-            </div>
-            <div>
-                <dt class="font-semibold text-slate-600">Real video frames</dt>
-                <dd class="text-slate-700">{{ upload_result.analysis.debug.real_video_frame_count|default:"0" }}</dd>
-            </div>
-            <div>
-                <dt class="font-semibold text-slate-600">Low-rate candidates</dt>
-                <dd class="text-slate-700">{{ upload_result.analysis.debug.low_rate_candidates_count|default:"0" }}</dd>
-            </div>
-            <div>
-                <dt class="font-semibold text-slate-600">Dense candidates</dt>
-                <dd class="text-slate-700">{{ upload_result.analysis.debug.dense_candidates_count|default:"0" }}</dd>
-            </div>
-            <div>
-                <dt class="font-semibold text-slate-600">Merged local candidates</dt>
-                <dd class="text-slate-700">{{ upload_result.analysis.debug.merged_candidates_count|default:"0" }}</dd>
-            </div>
-            <div>
-                <dt class="font-semibold text-slate-600">Scan / dense FPS</dt>
-                <dd class="text-slate-700">{{ upload_result.analysis.debug.scan_fps_used|default:"-" }} / {{ upload_result.analysis.debug.dense_fps_used|default:"-" }}</dd>
-            </div>
-            <div>
-                <dt class="font-semibold text-slate-600">Dense window seconds</dt>
-                <dd class="text-slate-700">{{ upload_result.analysis.debug.dense_window_seconds|default:"-" }}</dd>
-            </div>
-            <div>
-                <dt class="font-semibold text-slate-600">Chaotic play suspected</dt>
-                <dd class="text-slate-700">{{ upload_result.analysis.debug.chaotic_play_suspected|default:"False" }}</dd>
-            </div>
-            <div>
-                <dt class="font-semibold text-slate-600">Frames sent to Gemini</dt>
-                <dd class="text-slate-700">{{ upload_result.analysis.debug.frames_sent_to_gemini_count }}</dd>
-            </div>
-            <div>
-                <dt class="font-semibold text-slate-600">Gemini API call succeeded</dt>
-                <dd class="text-slate-700">{{ upload_result.analysis.debug.gemini_api_call_succeeded }}</dd>
-            </div>
-            <div>
-                <dt class="font-semibold text-slate-600">Response parsing succeeded</dt>
-                <dd class="text-slate-700">{{ upload_result.analysis.debug.response_parsing_succeeded }}</dd>
-            </div>
-            <div>
-                <dt class="font-semibold text-slate-600">Error type</dt>
-                <dd class="text-slate-700">{{ upload_result.analysis.debug.error_type|default:"None" }}</dd>
-            </div>
-            <div class="sm:col-span-2">
-                <dt class="font-semibold text-slate-600">Error message</dt>
-                <dd class="text-slate-700">{{ upload_result.analysis.debug.error_message|default:"None" }}</dd>
-            </div>
-            <div class="sm:col-span-2">
-                <dt class="font-semibold text-slate-600">Raw Gemini response excerpt</dt>
-                <dd class="text-slate-700">{{ upload_result.analysis.debug.raw_response_excerpt|default:"None" }}</dd>
-            </div>
-        </dl>
-
-        {% if upload_result.analysis.debug.scoring_top_candidates %}
-        <div class="mt-4">
-            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Top scoring candidates</h3>
-            <ul class="mt-2 space-y-1 text-xs text-slate-700">
-                {% for candidate in upload_result.analysis.debug.scoring_top_candidates %}
-                <li>{{ candidate.timestamp }} - {{ candidate.reason }} (score {{ candidate.score }})</li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-        {% if upload_result.analysis.debug.motion_peaks_selected %}
-        <div class="mt-4">
-            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Top motion peaks</h3>
-            <ul class="mt-2 space-y-1 text-xs text-slate-700">
-                {% for peak in upload_result.analysis.debug.motion_peaks_selected %}
-                <li>{{ peak.timestamp }} - group {{ peak.group_id }} (motion {{ peak.motion }}, score {{ peak.score }})</li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-    </div>
+    <section class="rounded-lg border border-amber-400/30 bg-amber-500/10 p-5">
+      <h2 class="text-sm font-semibold uppercase tracking-widest text-amber-200">AI Warning</h2>
+      <p class="mt-2 text-sm text-amber-100">{{ upload_result.analysis.error }}</p>
+    </section>
     {% endif %}
 
     {% if upload_result.analysis.evidence_frames %}
-    <div class="mt-6 rounded-xl border border-slate-200 p-5">
-        <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-600">Selected Evidence Frames Sent to AI</h2>
-        <div class="mt-4 grid gap-4 sm:grid-cols-2">
-            {% for frame in upload_result.analysis.evidence_frames %}
-            <div class="rounded-lg border border-slate-200 p-3">
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ frame.timestamp }}</p>
-                <p class="mt-1 text-xs text-slate-500">{{ frame.frame_id }}</p>
-                {% if frame.selection_reason %}
-                <p class="mt-1 text-xs text-slate-500">{{ frame.selection_reason }}</p>
-                {% endif %}
-                <img src="{{ frame.frame_url }}" alt="Evidence frame {{ forloop.counter }}" class="mt-2 w-full rounded-md border border-slate-200">
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-    {% endif %}
+    <section class="glass-panel rounded-lg p-6">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h2 class="text-sm font-semibold uppercase tracking-widest text-slate-400">Selected Evidence Frames</h2>
+        <span class="rounded-full bg-white/10 px-3 py-1 text-xs font-bold uppercase tracking-wide text-slate-300">{{ upload_result.analysis.evidence_frames|length }} frames</span>
+      </div>
+      <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {% for frame in upload_result.analysis.evidence_frames %}
+        <article class="overflow-hidden rounded-lg border border-white/10 bg-black/20">
+          <div class="p-3">
+            <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">{{ frame.timestamp }}</p>
+            <p class="mt-1 text-xs text-slate-500">{{ frame.frame_id }}</p>
+            {% if frame.selection_reason %}<p class="mt-1 text-xs text-[#CCFF00]">{{ frame.selection_reason }}</p>{% endif %}
+          </div>
+          <img src="{{ frame.frame_url }}" alt="Evidence frame {{ forloop.counter }}" class="w-full border-t border-white/10 bg-black object-cover">
+        </article>
+        {% endfor %}
+      </div>
+    </section>
     {% endif %}
 
-    <div class="mt-8">
-        <a href="{% url 'analyze' %}" class="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800">
-            Analyze another clip
-        </a>
-    </div>
-</section>
-{% endblock %}
+    {% else %}
+    <section class="glass-panel rounded-lg p-8">
+      <p class="text-xs font-semibold uppercase tracking-[0.28em] text-[#CCFF00]">No result</p>
+      <h2 class="mt-3 text-3xl text-white uppercase" style="font-family:'Space Grotesk', sans-serif;">No Live Feed Results Yet</h2>
+      <p class="mt-3 max-w-xl text-sm leading-6 text-slate-300">Upload a clip from Evidence Log. When analysis finishes, RefCheck will send you back here automatically.</p>
+      <a href="{% url 'home' %}#analyze" class="mt-6 inline-flex items-center gap-2 rounded-sm bg-[#CCFF00] px-5 py-3 text-xs font-bold uppercase text-black hover:opacity-90">
+        <span class="material-symbols-outlined text-base">segment</span>
+        Go to Evidence Log
+      </a>
+    </section>
+    {% endif %}
+  </div>
+</main>
+</body>
+</html>
